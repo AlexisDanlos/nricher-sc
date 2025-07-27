@@ -10,6 +10,8 @@ import os
 from datetime import datetime
 from numpy import float32
 import numpy as np
+import pickle
+import joblib
 
 # === CONFIGURATION GPU/CPU ===
 USE_GPU = True  # Mettre True pour essayer d'utiliser le GPU (nécessite des dépendances supplémentaires)
@@ -107,7 +109,7 @@ from joblib import parallel_backend
 
 def print_progress(step, message):
     """Affiche le progrès avec un indicateur visuel"""
-    print(f"[{step}/7] {message}...")
+    print(f"[{step}/8] {message}...")
 
 print("🚀 Démarrage de l'analyse e-commerce")
 print("=" * 50)
@@ -125,7 +127,7 @@ if not USE_GPU:
 print_progress(1, "Chargement des données")
 
 # Option pour limiter le nombre de lignes (utile pour les tests)
-LIMIT_ROWS = None  # Limiter pour éviter les problèmes de mémoire GPU
+LIMIT_ROWS = 10000  # Limiter pour éviter les problèmes de mémoire GPU
 
 xlsb_path = "20210614 Ecommerce sales.xlsb"
 if LIMIT_ROWS:
@@ -944,5 +946,121 @@ while os.path.exists(output_filename):
 df.to_excel(output_filename, index=False)
 
 print(f"✅ Script terminé. Fichier '{output_filename}' généré.")
+
+# === 8. SAUVEGARDE DU MODÈLE ===
+print_progress(8, "Sauvegarde du modèle")
+
+# Création du dossier de sauvegarde
+model_dir = "models"
+os.makedirs(model_dir, exist_ok=True)
+
+# Génération des noms de fichiers avec timestamp
+model_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+try:
+    if USE_GPU and 'torch' in globals():
+        # Sauvegarde modèle PyTorch GPU
+        model_filename = f"{model_dir}/pytorch_model_{model_timestamp}.pth"
+        tfidf_filename = f"{model_dir}/tfidf_configs_{model_timestamp}.pkl"
+        label_encoder_filename = f"{model_dir}/label_encoder_{model_timestamp}.pkl"
+        metadata_filename = f"{model_dir}/model_metadata_{model_timestamp}.pkl"
+        
+        # Sauvegarder le modèle PyTorch
+        torch.save({
+            'model_state_dict': model.state_dict(),
+            'model_config': {
+                'input_size': input_size,
+                'hidden_size': hidden_size,
+                'num_classes': num_classes,
+                'dropout_rate': 0.4
+            },
+            'device': DEVICE,
+            'test_score': test_score
+        }, model_filename, _use_new_zipfile_serialization=False)
+        
+        # Sauvegarder les configurations TF-IDF
+        with open(tfidf_filename, 'wb') as f:
+            pickle.dump(tfidf_configs, f)
+        
+        # Sauvegarder le label encoder
+        with open(label_encoder_filename, 'wb') as f:
+            pickle.dump(le_filtered, f)
+        
+        # Sauvegarder les métadonnées
+        metadata = {
+            'model_type': 'pytorch_gpu',
+            'timestamp': model_timestamp,
+            'test_score': test_score,
+            'num_classes': num_classes,
+            'valid_categories': valid_categories.tolist(),
+            'training_samples': len(X_train),
+            'test_samples': len(X_test),
+            'use_ensemble': False,
+            'device': DEVICE
+        }
+        with open(metadata_filename, 'wb') as f:
+            pickle.dump(metadata, f)
+        
+        print(f"✅ Modèle PyTorch sauvegardé:")
+        print(f"   📁 Modèle: {model_filename}")
+        print(f"   📁 TF-IDF: {tfidf_filename}")
+        print(f"   📁 Encodeur: {label_encoder_filename}")
+        print(f"   📁 Métadonnées: {metadata_filename}")
+        
+    else:
+        # Sauvegarde modèle CPU (ensemble ou standard)
+        if USE_ENSEMBLE:
+            model_filename = f"{model_dir}/ensemble_model_{model_timestamp}.pkl"
+            model_type = 'ensemble_cpu'
+        else:
+            model_filename = f"{model_dir}/randomforest_model_{model_timestamp}.pkl"
+            model_type = 'randomforest_cpu'
+        
+        label_encoder_filename = f"{model_dir}/label_encoder_{model_timestamp}.pkl"
+        metadata_filename = f"{model_dir}/model_metadata_{model_timestamp}.pkl"
+        
+        # Sauvegarder le pipeline complet (TF-IDF + modèle)
+        joblib.dump(pipeline, model_filename)
+        
+        # Sauvegarder le label encoder
+        with open(label_encoder_filename, 'wb') as f:
+            pickle.dump(le_filtered, f)
+        
+        # Sauvegarder les métadonnées
+        metadata = {
+            'model_type': model_type,
+            'timestamp': model_timestamp,
+            'test_score': test_score,
+            'num_classes': len(le_filtered.classes_),
+            'valid_categories': valid_categories.tolist(),
+            'training_samples': len(X_train),
+            'test_samples': len(X_test),
+            'use_ensemble': USE_ENSEMBLE,
+            'device': 'cpu'
+        }
+        if not USE_ENSEMBLE:
+            metadata['oob_score'] = pipeline.named_steps['clf'].oob_score_
+        
+        with open(metadata_filename, 'wb') as f:
+            pickle.dump(metadata, f)
+        
+        print(f"✅ Modèle CPU sauvegardé:")
+        print(f"   📁 Pipeline: {model_filename}")
+        print(f"   📁 Encodeur: {label_encoder_filename}")
+        print(f"   📁 Métadonnées: {metadata_filename}")
+    
+    # Affichage du résumé de sauvegarde
+    print(f"📊 Résumé de la sauvegarde:")
+    print(f"   🎯 Type: {metadata['model_type']}")
+    print(f"   📈 Score test: {metadata['test_score']:.3f}")
+    print(f"   🏷️  Classes: {metadata['num_classes']}")
+    print(f"   📚 Échantillons train/test: {metadata['training_samples']}/{metadata['test_samples']}")
+    
+except Exception as e:
+    print(f"❌ Erreur lors de la sauvegarde du modèle: {e}")
+    print("⚠️  Le script continue malgré l'erreur de sauvegarde")
+
 print("=" * 50)
 print("🎉 Analyse e-commerce terminée avec succès!")
+print(f"📁 Modèles sauvegardés dans le dossier: {model_dir}/")
+print("💡 Pour réutiliser le modèle, chargez les fichiers correspondants")
