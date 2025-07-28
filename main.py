@@ -22,7 +22,7 @@ from model_utils import TextClassifierNet, print_progress, print_configuration
 from data_processing import load_excel_data, prepare_data_for_training, create_tfidf_vectorizers, prepare_features, prepare_labels
 
 # === CONFIGURATION ===
-FILE_PATH = "20210614 Ecommerce sales.xlsb"
+FILE_PATH = "ecommerce_corrected_20250728_174305.xlsx"
 LIBELLE_COL = "Libellé produit"
 NATURE_COL = "Nature"
 
@@ -58,7 +58,7 @@ def main():
     
     # Filtrage des catégories rares pour améliorer les performances
     # Utilisation de min=2 pour permettre la stratification (train_test_split nécessite ≥2 échantillons/classe)
-    min_samples_per_category = 2
+    min_samples_per_category = 1
     category_counts = df[NATURE_COL].value_counts()
     valid_categories = category_counts[category_counts >= min_samples_per_category].index
     
@@ -211,7 +211,7 @@ def train_pytorch_model(X_train, X_test, y_train, y_test, tfidf_configs, le_filt
         scheduler.step()
         
         # Validation et affichage du progrès plus fréquent
-        if epoch % 5 == 0 or epoch >= 70:  # Validation tous les 5 époques
+        if epoch % 5 == 0 or epoch >= 65:  # Validation tous les 5 époques
             model.eval()
             with torch.no_grad():
                 test_output = model(X_test_tensor)
@@ -235,7 +235,7 @@ def train_pytorch_model(X_train, X_test, y_train, y_test, tfidf_configs, le_filt
                 avg_loss = total_loss / batch_count
                 print(f"   {improvement_indicator} Époque {epoch+1:3d}: Loss={avg_loss:.4f}, Acc={accuracy:.3f}, Best={best_accuracy:.3f}, LR={current_lr:.6f}, Patience={patience_counter}")
                 
-                if patience_counter >= 3 and epoch >= 35:  # Early stopping plus patient
+                if patience_counter >= 3 and epoch >= 45:  # Early stopping plus patient
                     print(f"   🛑 Early stopping à l'époque {epoch+1} (patience épuisée)")
                     break
                     
