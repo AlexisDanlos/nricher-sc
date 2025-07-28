@@ -3,8 +3,6 @@ Script principal pour l'entraînement du modèle de classification e-commerce.
 Ce script se concentre uniquement sur l'entraînement et la sauvegarde du modèle.
 """
 
-import pandas as pd
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -13,7 +11,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.pipeline import Pipeline
+import numpy as np
 import joblib
 import pickle
 import os
@@ -25,8 +23,11 @@ from data_processing import load_excel_data, prepare_data_for_training, create_t
 
 # === CONFIGURATION ===
 FILE_PATH = "20210614 Ecommerce sales.xlsb"
-LIBELLE_COL = "LIBELLE"
-NATURE_COL = "NATURE"
+LIBELLE_COL = "Libellé produit"
+NATURE_COL = "Nature"
+
+# Configuration des données
+LIMIT_ROWS = None  # Limiter pour les tests (ex: 20000), None pour tout charger
 
 # Configuration du modèle
 USE_GPU = True
@@ -50,14 +51,31 @@ def main():
     # === 1. CHARGEMENT DES DONNÉES ===
     print_progress(1, "Chargement des données")
     
-    df = load_excel_data(FILE_PATH, LIBELLE_COL, NATURE_COL)
+    df = load_excel_data(FILE_PATH, LIBELLE_COL, NATURE_COL, max_rows=LIMIT_ROWS)
     
     # === 2. PRÉPARATION DES DONNÉES ===
     print_progress(2, "Préparation des données")
     
-    df_filtered, valid_categories, category_counts = prepare_data_for_training(
-        df, LIBELLE_COL, NATURE_COL, min_samples=30
-    )
+    # Filtrage des catégories rares pour améliorer les performances
+    # Utilisation de min=2 pour permettre la stratification (train_test_split nécessite ≥2 échantillons/classe)
+    min_samples_per_category = 2
+    category_counts = df[NATURE_COL].value_counts()
+    valid_categories = category_counts[category_counts >= min_samples_per_category].index
+    
+    # Filtration du dataset pour ne garder que les catégories avec assez d'exemples
+    df_filtered = df[df[NATURE_COL].isin(valid_categories)].copy()
+    removed_count = len(df) - len(df_filtered)
+    
+    # Reset des indices pour assurer la continuité
+    df_filtered = df_filtered.reset_index(drop=True)
+    
+    if removed_count > 0:
+        print(f"⚠️  {removed_count} produits supprimés (catégories rares avec <{min_samples_per_category} exemples)")
+        print(f"📊 Dataset d'entraînement: {len(df_filtered)} produits, {len(valid_categories)} catégories")
+    
+    print(f"📊 Catégories avec ≥{min_samples_per_category} échantillons: {len(valid_categories)}")
+    print(f"🎯 Échantillons utilisés: {len(df_filtered)} / {len(df)}")
+    print(f"📈 Répartition: min={category_counts[valid_categories].min()}, max={category_counts[valid_categories].max()}, moyenne={category_counts[valid_categories].mean():.1f}")
     
     # === 3. CRÉATION DES FEATURES ===
     print_progress(3, "Création des features TF-IDF")
@@ -69,9 +87,18 @@ def main():
     # === 4. DIVISION DES DONNÉES ===
     print_progress(4, "Division train/test")
     
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
+    # Vérification que toutes les classes ont au moins 2 échantillons pour la stratification
+    unique, counts = np.unique(y, return_counts=True)
+    min_class_count = counts.min()
+    if min_class_count < 2:
+        print(f"⚠️  Stratification désactivée: certaines classes ont <2 échantillons (min={min_class_count})")
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42
+        )
+    else:
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42, stratify=y
+        )
     
     print(f"📊 Train: {X_train.shape[0]} échantillons")
     print(f"📊 Test: {X_test.shape[0]} échantillons")
@@ -80,89 +107,179 @@ def main():
     print_progress(5, "Entraînement du modèle")
     
     if USE_GPU and torch.cuda.is_available():
-        test_score = train_pytorch_model(X_train, X_test, y_train, y_test, tfidf_configs, le_filtered)
+        test_score = train_pytorch_model(X_train, X_test, y_train, y_test, tfidf_configs, le_filtered, valid_categories)
     else:
-        test_score = train_cpu_model(X_train, X_test, y_train, y_test, le_filtered)
+        test_score = train_cpu_model(X_train, X_test, y_train, y_test, le_filtered, valid_categories)
     
     print(f"🎯 Score final: {test_score:.4f}")
     print("🎉 Entraînement terminé avec succès!")
 
-def train_pytorch_model(X_train, X_test, y_train, y_test, tfidf_configs, le_filtered):
-    """Entraîne le modèle PyTorch GPU."""
+def train_pytorch_model(X_train, X_test, y_train, y_test, tfidf_configs, le_filtered, valid_categories):
+    """Entraîne le modèle PyTorch GPU - Méthode exacte du backup."""
     
-    # Configuration du modèle
+    # Configuration du modèle (même que backup)
     input_size = X_train.shape[1]
-    hidden_size = 1024
+    hidden_size = min(1024, input_size // 4)  # Architecture plus raisonnable pour GPU
     num_classes = len(le_filtered.classes_)
+    
+    # Utiliser des batches plus petits pour économiser la mémoire GPU
+    batch_size = 64  # Réduit pour éviter OOM
     
     config = {
         "input_size": input_size,
         "hidden_size": hidden_size,
         "num_classes": num_classes,
-        "batch_size": BATCH_SIZE,
+        "batch_size": batch_size,
         "epochs": EPOCHS,
         "learning_rate": LEARNING_RATE,
-        "device": DEVICE
+        "device": DEVICE,
+        "dropout_rate": 0.4
     }
-    print_configuration(config)
     
-    # Création du modèle
-    model = TextClassifierNet(input_size, hidden_size, num_classes).to(DEVICE)
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    # Entraînement d'un seul modèle optimisé au lieu d'ensemble pour économiser la mémoire
+    print(f"🔥 Entraînement modèle optimisé sur GPU ({DEVICE}) avec {num_classes} catégories...")
+    print(f"📊 Architecture: {input_size} → {hidden_size} → {hidden_size//2} → {hidden_size//4} → {num_classes}")
+    print(f"⚙️  Paramètres: Batch={batch_size}, LR=0.001, Dropout=0.4, Label Smoothing=0.1")
+    print(f"🎯 Objectif: Maximiser la précision (actuel: validation tous les 5 époques)")
+    print("-" * 60)
     
-    # Préparation des données
-    X_train_tensor = torch.FloatTensor(X_train).to(DEVICE)
-    y_train_tensor = torch.LongTensor(y_train).to(DEVICE)
+    model = TextClassifierNet(
+        input_size, 
+        hidden_size, 
+        num_classes, 
+        dropout_rate=0.4
+    ).to(DEVICE)
+    
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+    optimizer = optim.AdamW(
+        model.parameters(), 
+        lr=0.001, 
+        weight_decay=1e-4,
+        betas=(0.9, 0.999)
+    )
+    scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
+        optimizer, T_0=10, T_mult=2
+    )
+    
+    # Utiliser des batches plus petits pour économiser la mémoire GPU
+    train_dataset = TensorDataset(
+        torch.FloatTensor(X_train).to(DEVICE),
+        torch.LongTensor(y_train).to(DEVICE)
+    )
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+    
+    # Préparer les tenseurs de test
     X_test_tensor = torch.FloatTensor(X_test).to(DEVICE)
     y_test_tensor = torch.LongTensor(y_test).to(DEVICE)
-    
-    train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
-    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
-    
-    # Entraînement
-    print("🔥 Début de l'entraînement...")
+        
+    # Entraînement avancé avec un seul modèle optimisé
     model.train()
+    best_accuracy = 0
+    patience_counter = 0
+    best_model_state = None
     
-    for epoch in range(EPOCHS):
+    for epoch in range(100):  # Plus d'époques pour un seul modèle
         total_loss = 0
-        correct_predictions = 0
-        total_samples = 0
+        batch_count = 0
         
-        for batch_X, batch_y in train_loader:
+        for batch_idx, (data, target) in enumerate(train_loader):
             optimizer.zero_grad()
-            outputs = model(batch_X)
-            loss = criterion(outputs, batch_y)
-            loss.backward()
-            optimizer.step()
             
+            # Mixup data augmentation occasionnel
+            if np.random.random() < 0.1 and len(data) > 1:
+                lam = np.random.beta(0.2, 0.2)
+                index = torch.randperm(data.size(0)).to(DEVICE)
+                mixed_data = lam * data + (1 - lam) * data[index]
+                output = model(mixed_data)
+                loss = lam * criterion(output, target) + (1 - lam) * criterion(output, target[index])
+            else:
+                output = model(data)
+                loss = criterion(output, target)
+            
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)  # Gradient clipping
+            optimizer.step()
             total_loss += loss.item()
-            _, predicted = torch.max(outputs.data, 1)
-            total_samples += batch_y.size(0)
-            correct_predictions += (predicted == batch_y).sum().item()
+            batch_count += 1
+            
+            # Affichage du progrès par batch pour les premières époques ou époques critiques
+            if (epoch < 10 or epoch % 20 == 0) and batch_idx % (len(train_loader) // 4) == 0:
+                progress_pct = (batch_idx + 1) / len(train_loader) * 100
+                current_avg_loss = total_loss / (batch_idx + 1)
+                print(f"     Batch {batch_idx+1:3d}/{len(train_loader)} ({progress_pct:5.1f}%) - Loss: {current_avg_loss:.4f}")
         
-        if (epoch + 1) % 10 == 0:
-            avg_loss = total_loss / len(train_loader)
-            accuracy = 100 * correct_predictions / total_samples
-            print(f"Epoch [{epoch+1}/{EPOCHS}], Loss: {avg_loss:.4f}, Accuracy: {accuracy:.2f}%")
+        scheduler.step()
+        
+        # Validation et affichage du progrès plus fréquent
+        if epoch % 5 == 0 or epoch >= 70:  # Validation tous les 5 époques
+            model.eval()
+            with torch.no_grad():
+                test_output = model(X_test_tensor)
+                _, predicted = torch.max(test_output.data, 1)
+                accuracy = (predicted == y_test_tensor).float().mean().item()
+                
+                if accuracy > best_accuracy:
+                    best_accuracy = accuracy
+                    patience_counter = 0
+                    # Sauvegarder le meilleur modèle
+                    best_model_state = model.state_dict().copy()
+                    improvement_indicator = "⬆️"
+                else:
+                    patience_counter += 1
+                    improvement_indicator = "➡️"
+                
+                # Calcul du learning rate actuel
+                current_lr = optimizer.param_groups[0]['lr']
+                
+                # Affichage détaillé du progrès
+                avg_loss = total_loss / batch_count
+                print(f"   {improvement_indicator} Époque {epoch+1:3d}: Loss={avg_loss:.4f}, Acc={accuracy:.3f}, Best={best_accuracy:.3f}, LR={current_lr:.6f}, Patience={patience_counter}")
+                
+                if patience_counter >= 3 and epoch >= 35:  # Early stopping plus patient
+                    print(f"   🛑 Early stopping à l'époque {epoch+1} (patience épuisée)")
+                    break
+                    
+            model.train()
+        else:
+            # Affichage rapide de la loss pour les autres époques
+            avg_loss = total_loss / batch_count
+            current_lr = optimizer.param_groups[0]['lr']
+            print(f"   📈 Époque {epoch+1:3d}: Loss={avg_loss:.4f}, LR={current_lr:.6f}")
     
-    # Évaluation
-    print("📊 Évaluation du modèle...")
-    model.eval()
-    with torch.no_grad():
-        test_outputs = model(X_test_tensor)
-        _, test_predicted = torch.max(test_outputs.data, 1)
-        test_predicted_cpu = test_predicted.cpu().numpy()
+    # Restaurer le meilleur modèle
+    if best_model_state:
+        model.load_state_dict(best_model_state)
+    print(f"   ✅ Modèle terminé - Meilleure précision: {best_accuracy:.3f}")
     
-    test_score = accuracy_score(y_test, test_predicted_cpu)
-    print(f"✅ Précision sur le test: {test_score:.4f}")
+    # Wrapper simplifié pour un seul modèle
+    class SingleModelWrapper:
+        def __init__(self, model, device):
+            self.model = model
+            self.device = device
+            
+        def predict(self, X):
+            # X est déjà transformé et combiné
+            X_tensor = torch.FloatTensor(X).to(self.device)
+            
+            self.model.eval()
+            with torch.no_grad():
+                output = self.model(X_tensor)
+                _, predicted = torch.max(output.data, 1)
+                return predicted.cpu().numpy()
+    
+    # Créer le wrapper
+    pipeline = SingleModelWrapper(model, DEVICE)
+    
+    # Score final
+    final_predictions = pipeline.predict(X_test)
+    test_score = (final_predictions == y_test).mean()
     
     # Sauvegarde du modèle
-    save_pytorch_model(model, tfidf_configs, le_filtered, test_score, config)
+    save_pytorch_model(model, tfidf_configs, le_filtered, test_score, config, valid_categories, X_train, X_test)
     
     return test_score
 
-def train_cpu_model(X_train, X_test, y_train, y_test, le_filtered):
+def train_cpu_model(X_train, X_test, y_train, y_test, le_filtered, valid_categories):
     """Entraîne le modèle CPU (Random Forest ou Ensemble)."""
     
     if USE_ENSEMBLE:
@@ -217,11 +334,11 @@ def train_cpu_model(X_train, X_test, y_train, y_test, le_filtered):
     print(f"✅ Précision sur le test: {test_score:.4f}")
     
     # Sauvegarde
-    save_cpu_model(pipeline, le_filtered, test_score)
+    save_cpu_model(pipeline, le_filtered, test_score, X_train, X_test)
     
     return test_score
 
-def save_pytorch_model(model, tfidf_configs, le_filtered, test_score, config):
+def save_pytorch_model(model, tfidf_configs, le_filtered, test_score, config, valid_categories, X_train, X_test):
     """Sauvegarde le modèle PyTorch et ses composants."""
     
     print_progress(6, "Sauvegarde du modèle PyTorch")
@@ -261,6 +378,10 @@ def save_pytorch_model(model, tfidf_configs, le_filtered, test_score, config):
             'timestamp': timestamp,
             'test_score': test_score,
             'num_classes': config['num_classes'],
+            'valid_categories': valid_categories.tolist(),
+            'training_samples': len(X_train),
+            'test_samples': len(X_test),
+            'use_ensemble': False,
             'device': str(DEVICE)
         }
         with open(metadata_filename, 'wb') as f:
@@ -275,7 +396,7 @@ def save_pytorch_model(model, tfidf_configs, le_filtered, test_score, config):
     except Exception as e:
         print(f"❌ Erreur lors de la sauvegarde: {e}")
 
-def save_cpu_model(pipeline, le_filtered, test_score):
+def save_cpu_model(pipeline, le_filtered, test_score, X_train, X_test):
     """Sauvegarde le modèle CPU."""
     
     print_progress(6, "Sauvegarde du modèle CPU")
@@ -311,6 +432,9 @@ def save_cpu_model(pipeline, le_filtered, test_score):
             'timestamp': timestamp,
             'test_score': test_score,
             'num_classes': len(le_filtered.classes_),
+            'valid_categories': [],  # CPU model doesn't use this but keep for compatibility
+            'training_samples': len(X_train),
+            'test_samples': len(X_test),
             'use_ensemble': USE_ENSEMBLE,
             'device': 'cpu'
         }

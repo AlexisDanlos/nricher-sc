@@ -8,16 +8,13 @@ import torch.nn as nn
 
 class TextClassifierNet(nn.Module):
     """
-    Réseau de neurones pour la classification de texte.
-    Architecture : Input -> FC1 -> BatchNorm -> ReLU -> Dropout -> 
-                  FC2 -> BatchNorm -> ReLU -> Dropout -> 
-                  FC3 -> BatchNorm -> ReLU -> Dropout -> 
-                  Output
+    Réseau de neurones avancé pour la classification de texte - Version exacte du backup.
+    Architecture sophistiquée avec connexions résiduelles et diverses fonctions d'activation.
     """
     
     def __init__(self, input_size, hidden_size, num_classes, dropout_rate=0.4):
         """
-        Initialise le réseau de neurones.
+        Initialise le réseau de neurones avancé.
         
         Args:
             input_size (int): Taille d'entrée (nombre de features TF-IDF)
@@ -26,28 +23,38 @@ class TextClassifierNet(nn.Module):
             dropout_rate (float): Taux de dropout pour la régularisation
         """
         super(TextClassifierNet, self).__init__()
-        
-        # Architecture en couches avec batch normalization et dropout
+        # Architecture plus profonde et sophistiquée
         self.fc1 = nn.Linear(input_size, hidden_size)
-        self.bn1 = nn.BatchNorm1d(hidden_size)
-        self.dropout1 = nn.Dropout(dropout_rate)
+        self.fc2 = nn.Linear(hidden_size, hidden_size)
+        self.fc3 = nn.Linear(hidden_size, hidden_size // 2)
+        self.fc4 = nn.Linear(hidden_size // 2, hidden_size // 4)
+        self.fc5 = nn.Linear(hidden_size // 4, num_classes)
         
-        self.fc2 = nn.Linear(hidden_size, hidden_size // 2)
-        self.bn2 = nn.BatchNorm1d(hidden_size // 2)
-        self.dropout2 = nn.Dropout(dropout_rate)
+        # Normalisation et régularisation
+        self.dropout = nn.Dropout(dropout_rate)
+        self.batch_norm1 = nn.BatchNorm1d(hidden_size)
+        self.batch_norm2 = nn.BatchNorm1d(hidden_size)
+        self.batch_norm3 = nn.BatchNorm1d(hidden_size // 2)
+        self.batch_norm4 = nn.BatchNorm1d(hidden_size // 4)
         
-        self.fc3 = nn.Linear(hidden_size // 2, hidden_size // 4)
-        self.bn3 = nn.BatchNorm1d(hidden_size // 4)
-        self.dropout3 = nn.Dropout(dropout_rate)
-        
-        self.fc4 = nn.Linear(hidden_size // 4, num_classes)
-        
-        # Activation
+        # Fonctions d'activation variées
         self.relu = nn.ReLU()
+        self.leaky_relu = nn.LeakyReLU(0.1)
+        self.elu = nn.ELU()
+        
+        # Initialisation des poids
+        self._initialize_weights()
+        
+    def _initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
         
     def forward(self, x):
         """
-        Passe avant du réseau.
+        Passe avant du réseau avec connexions résiduelles et activations variées.
         
         Args:
             x (torch.Tensor): Tensor d'entrée
@@ -55,27 +62,34 @@ class TextClassifierNet(nn.Module):
         Returns:
             torch.Tensor: Sortie du réseau (logits)
         """
-        # Première couche
+        # Couche 1
         x = self.fc1(x)
-        x = self.bn1(x)
+        x = self.batch_norm1(x)
         x = self.relu(x)
-        x = self.dropout1(x)
+        x = self.dropout(x)
         
-        # Deuxième couche
+        # Couche 2 avec connexion résiduelle
+        residual = x
         x = self.fc2(x)
-        x = self.bn2(x)
-        x = self.relu(x)
-        x = self.dropout2(x)
+        x = self.batch_norm2(x)
+        x = self.leaky_relu(x)
+        x = self.dropout(x)
+        x = x + residual  # Connexion résiduelle
         
-        # Troisième couche
+        # Couche 3
         x = self.fc3(x)
-        x = self.bn3(x)
+        x = self.batch_norm3(x)
+        x = self.elu(x)
+        x = self.dropout(x)
+        
+        # Couche 4
+        x = self.fc4(x)
+        x = self.batch_norm4(x)
         x = self.relu(x)
-        x = self.dropout3(x)
+        x = self.dropout(x)
         
         # Couche de sortie
-        x = self.fc4(x)
-        
+        x = self.fc5(x)
         return x
 
 def print_progress(step, description):
