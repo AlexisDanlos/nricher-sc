@@ -84,7 +84,8 @@ color_mapping = {
 
 def clean_text(text):
     """
-    Nettoie et normalise le texte pour l'analyse.
+    Nettoyage amélioré qui préserve les dimensions cruciales pour la classification.
+    Version optimisée identique à l'original.
     
     Args:
         text (str): Texte à nettoyer
@@ -92,25 +93,52 @@ def clean_text(text):
     Returns:
         str: Texte nettoyé et normalisé
     """
-    text = str(text)
+    text = str(text).lower()
     
-    # 1. Conversion en minuscules
-    text = text.lower()
+    # Préservation des patterns importants AVANT nettoyage
+    # Remplacement des caractères spéciaux par des mots-clés
+    text = re.sub(r'&', ' et ', text)
+    text = re.sub(r'%', ' pourcent ', text)
+    text = re.sub(r'\+', ' plus ', text)
+    text = re.sub(r'@', ' arobase ', text)
     
-    # 2. Nettoyage des caractères spéciaux et normalisation
-    text = re.sub(r"[''`]", "'", text)  # Normalisation des apostrophes
-    text = re.sub(r'[«»""„"]', '"', text)  # Normalisation des guillemets
-    text = re.sub(r"[–—―]", "-", text)  # Normalisation des tirets
-    text = re.sub(r"[…]", "...", text)  # Normalisation des points de suspension
+    # PRÉSERVATION INTELLIGENTE DES DIMENSIONS (traitement séquentiel pour éviter les conflits)
+    # D'abord traiter les 3D, puis marquer les zones traitées, puis traiter les 2D restants
     
-    # 3. Suppression de la ponctuation excessive
-    text = re.sub(r"[^\w\s\-\.,°%/()]", " ", text)  # Garde juste les lettres, chiffres, espaces et quelques caractères
+    # Étape 1: Marquer temporairement les dimensions 3D
+    text = re.sub(r'(\d+(?:[,\.]\d+)?)\s*[xX×*]\s*(\d+(?:[,\.]\d+)?)\s*[xX×*]\s*(\d+(?:[,\.]\d+)?)(?:\s*cm)?', 
+                  r' DIM3D_\1x\2x\3 ', text)
     
-    # 4. Nettoyage des espaces multiples
-    text = re.sub(r"\s+", " ", text)
+    # Étape 2: Traiter les dimensions 2D restantes (qui ne font pas partie d'une 3D)
+    text = re.sub(r'(\d+(?:[,\.]\d+)?)\s*[xX×*]\s*(\d+(?:[,\.]\d+)?)(?:\s*cm)?', 
+                  r' dim_\1x\2 ', text)
     
-    # 5. Suppression des espaces en début/fin
-    text = text.strip()
+    # Étape 3: Restaurer les dimensions 3D avec le bon préfixe
+    text = re.sub(r'DIM3D_(\d+(?:[,\.]\d+)?x\d+(?:[,\.]\d+)?x\d+(?:[,\.]\d+)?)', 
+                  r'dim_\1', text)
+    
+    # Préservation des tailles de vêtements
+    text = re.sub(r'\b(xs|s|m|l|xl|xxl|xxxl)\b', r' taille_\1 ', text)
+    
+    # Préservation des mesures avec unités (APRÈS traitement des dimensions principales)
+    text = re.sub(r'\b(\d+(?:[,\.]\d+)?)\s*(cm|mm|m|kg|g|ml|l)\b', r' mesure_\1_\2 ', text)
+    
+    # Normalisation des points et virgules dans les dimensions preservées
+    text = re.sub(r'dim_(\d+)[,\.](\d+)', r'dim_\1point\2', text)
+    
+    # Nettoyage des mots orphelins comme "x" restants
+    text = re.sub(r'\s+[xX×*]\s+', ' ', text)
+    
+    # Nettoyage des caractères spéciaux mais préservation des espaces et underscores
+    text = re.sub(r'[^\w\s_]', ' ', text)
+    
+    # Suppression des mots très courts qui n'apportent pas d'information (SAUF les dimensions)
+    words = text.split()
+    words = [word for word in words if len(word) >= 2 or word.startswith('dim_')]
+    
+    # Normalisation des espaces
+    text = ' '.join(words)
+    text = re.sub(r'\s+', ' ', text).strip()
     
     return text
 
