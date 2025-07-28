@@ -127,43 +127,47 @@ if not USE_GPU:
 print_progress(1, "Chargement des données")
 
 # Option pour limiter le nombre de lignes (utile pour les tests)
-LIMIT_ROWS = 10000  # Limiter pour éviter les problèmes de mémoire GPU
+LIMIT_ROWS = None  # Limiter pour éviter les problèmes de mémoire GPU
 
-xlsb_path = "20210614 Ecommerce sales.xlsb"
+xlsb_path = "ecommerce_corrected_20250728_174305.xlsx"
+NATURE_COL = "Nature"  # Colonne des catégories
+LIBELLE_COL = "Libellé produit"  # Colonne des libellés de produits
+SHEET_NAME = "Sheet1"  # Nom de la feuille par défaut
+# SHEET_NAME = "20210614 Ecommerce sales"
 if LIMIT_ROWS:
     # Première lecture pour connaître toutes les catégories
-    df_sample = pd.read_excel(xlsb_path, sheet_name="20210614 Ecommerce sales", engine="pyxlsb", nrows=1000)
-    df_sample = df_sample[["Libellé produit", "Nature"]].dropna()
-    all_categories = df_sample["Nature"].unique()
-    
+    df_sample = pd.read_excel(xlsb_path, sheet_name=SHEET_NAME, engine="calamine", nrows=1000)
+    df_sample = df_sample[[LIBELLE_COL, NATURE_COL]].dropna()
+    all_categories = df_sample[NATURE_COL].unique()
+
     # Chargement limité
-    df = pd.read_excel(xlsb_path, sheet_name="20210614 Ecommerce sales", engine="pyxlsb", nrows=LIMIT_ROWS)
-    df = df[["Libellé produit", "Nature"]].dropna()
-    
+    df = pd.read_excel(xlsb_path, sheet_name=SHEET_NAME, engine="calamine", nrows=LIMIT_ROWS)
+    df = df[[LIBELLE_COL, NATURE_COL]].dropna()
+
     # Vérification et ajout des catégories manquantes
-    current_categories = df["Nature"].unique()
+    current_categories = df[NATURE_COL].unique()
     missing_categories = set(all_categories) - set(current_categories)
     
     if missing_categories:
         print(f"⚠️  Catégories manquantes détectées: {len(missing_categories)}")
         # Rechargement du fichier pour récupérer les catégories manquantes
-        df_full = pd.read_excel(xlsb_path, sheet_name="20210614 Ecommerce sales", engine="pyxlsb")
-        df_full = df_full[["Libellé produit", "Nature"]].dropna()
-        
+        df_full = pd.read_excel(xlsb_path, sheet_name=SHEET_NAME, engine="calamine")
+        df_full = df_full[[LIBELLE_COL, NATURE_COL]].dropna()
+
         # Ajout d'exemples de chaque catégorie manquante
         for category in missing_categories:
-            category_samples = df_full[df_full["Nature"] == category].head(5)  # 5 exemples par catégorie
+            category_samples = df_full[df_full[NATURE_COL] == category].head(5)  # 5 exemples par catégorie
             df = pd.concat([df, category_samples], ignore_index=True)
         
         print(f"✅ Ajout de {len(missing_categories)} catégories manquantes")
     
     print(f"⚠️  Mode test: chargement limité à {LIMIT_ROWS} lignes + toutes les catégories")
 else:
-    df = pd.read_excel(xlsb_path, sheet_name="20210614 Ecommerce sales", engine="pyxlsb")
-    df = df[["Libellé produit", "Nature"]].dropna()
+    df = pd.read_excel(xlsb_path, sheet_name=SHEET_NAME, engine="calamine")
+    df = df[[LIBELLE_COL, NATURE_COL]].dropna()
     print("📊 Chargement complet du fichier")
 
-print(f"✅ Données chargées: {len(df)} produits trouvés avec {len(df['Nature'].unique())} catégories uniques")
+print(f"✅ Données chargées: {len(df)} produits trouvés avec {len(df[NATURE_COL].unique())} catégories uniques")
 
 # Reset des indices après toutes les opérations de chargement
 df = df.reset_index(drop=True)
@@ -172,7 +176,7 @@ df = df.reset_index(drop=True)
 print_progress(2, "Nettoyage des textes")
 
 def clean_text(text):
-    """Nettoyage avancé pour améliorer la précision"""
+    """Nettoyage amélioré qui préserve les dimensions cruciales pour la classification"""
     text = str(text).lower()
     
     # Préservation des patterns importants AVANT nettoyage
@@ -182,21 +186,39 @@ def clean_text(text):
     text = re.sub(r'\+', ' plus ', text)
     text = re.sub(r'@', ' arobase ', text)
     
-    # Préservation des dimensions avant suppression des chiffres
-    dimension_patterns = re.findall(r'\d+(?:[,\.]\d+)?\s*[xX×*]\s*\d+(?:[,\.]\d+)?(?:\s*[xX×*]\s*\d+(?:[,\.]\d+)?)?', text)
-    for i, dim in enumerate(dimension_patterns):
-        text = text.replace(dim, f' dimension{i} ')
+    # PRÉSERVATION INTELLIGENTE DES DIMENSIONS (traitement séquentiel pour éviter les conflits)
+    # D'abord traiter les 3D, puis marquer les zones traitées, puis traiter les 2D restants
+    
+    # Étape 1: Marquer temporairement les dimensions 3D
+    text = re.sub(r'(\d+(?:[,\.]\d+)?)\s*[xX×*]\s*(\d+(?:[,\.]\d+)?)\s*[xX×*]\s*(\d+(?:[,\.]\d+)?)(?:\s*cm)?', 
+                  r' DIM3D_\1x\2x\3 ', text)
+    
+    # Étape 2: Traiter les dimensions 2D restantes (qui ne font pas partie d'une 3D)
+    text = re.sub(r'(\d+(?:[,\.]\d+)?)\s*[xX×*]\s*(\d+(?:[,\.]\d+)?)(?:\s*cm)?', 
+                  r' dim_\1x\2 ', text)
+    
+    # Étape 3: Restaurer les dimensions 3D avec le bon préfixe
+    text = re.sub(r'DIM3D_(\d+(?:[,\.]\d+)?x\d+(?:[,\.]\d+)?x\d+(?:[,\.]\d+)?)', 
+                  r'dim_\1', text)
     
     # Préservation des tailles de vêtements
     text = re.sub(r'\b(xs|s|m|l|xl|xxl|xxxl)\b', r' taille_\1 ', text)
-    text = re.sub(r'\b(\d+)\s*(cm|mm|m|kg|g|ml|l)\b', r' mesure_\1_\2 ', text)
     
-    # Nettoyage des caractères spéciaux mais préservation des espaces
-    text = re.sub(r'[^\w\s]', ' ', text)
+    # Préservation des mesures avec unités (APRÈS traitement des dimensions principales)
+    text = re.sub(r'\b(\d+(?:[,\.]\d+)?)\s*(cm|mm|m|kg|g|ml|l)\b', r' mesure_\1_\2 ', text)
     
-    # Suppression des mots très courts qui n'apportent pas d'information
+    # Normalisation des points et virgules dans les dimensions preservées
+    text = re.sub(r'dim_(\d+)[,\.](\d+)', r'dim_\1point\2', text)
+    
+    # Nettoyage des mots orphelins comme "x" restants
+    text = re.sub(r'\s+[xX×*]\s+', ' ', text)
+    
+    # Nettoyage des caractères spéciaux mais préservation des espaces et underscores
+    text = re.sub(r'[^\w\s_]', ' ', text)
+    
+    # Suppression des mots très courts qui n'apportent pas d'information (SAUF les dimensions)
     words = text.split()
-    words = [word for word in words if len(word) >= 2]
+    words = [word for word in words if len(word) >= 2 or word.startswith('dim_')]
     
     # Normalisation des espaces
     text = ' '.join(words)
@@ -205,13 +227,13 @@ def clean_text(text):
     return text
 
 # Application du nettoyage simple
-df["clean_libelle"] = df["Libellé produit"].apply(clean_text)
+df["clean_libelle"] = df[LIBELLE_COL].apply(clean_text)
 print("✅ Textes nettoyés")
 
 # === 3. ENCODAGE DES CATÉGORIES ===
 print_progress(3, "Encodage des catégories")
 le = LabelEncoder()
-df["nature_encoded"] = le.fit_transform(df["Nature"])
+df["nature_encoded"] = le.fit_transform(df[NATURE_COL])
 print(f"✅ Catégories encodées: {len(le.classes_)} catégories uniques")
 
 # === 4. ENTRAÎNEMENT DU MODÈLE SIMPLE ET RAPIDE ===
@@ -219,11 +241,11 @@ print_progress(4, "Division des données et entraînement du modèle")
 
 # Filtrage des catégories rares pour améliorer les performances
 min_samples_per_category = 1  # Augmenté pour de meilleures performances
-category_counts = df["Nature"].value_counts()
+category_counts = df[NATURE_COL].value_counts()
 valid_categories = category_counts[category_counts >= min_samples_per_category].index
 
 # Filtration du dataset pour ne garder que les catégories avec assez d'exemples
-df_filtered = df[df["Nature"].isin(valid_categories)].copy()
+df_filtered = df[df[NATURE_COL].isin(valid_categories)].copy()
 removed_count = len(df) - len(df_filtered)
 
 # Reset des indices pour assurer la continuité
@@ -235,8 +257,8 @@ if removed_count > 0:
     
     # Re-encodage des catégories filtrées
     le_filtered = LabelEncoder()
-    df_filtered["nature_encoded"] = le_filtered.fit_transform(df_filtered["Nature"])
-    
+    df_filtered["nature_encoded"] = le_filtered.fit_transform(df_filtered[NATURE_COL])
+
     # Division des données avec stratification possible
     X_train, X_test, y_train, y_test = train_test_split(
         df_filtered["clean_libelle"], df_filtered["nature_encoded"], 
@@ -415,7 +437,7 @@ if USE_GPU and 'torch' in globals():
                 avg_loss = total_loss / batch_count
                 print(f"   {improvement_indicator} Époque {epoch+1:3d}: Loss={avg_loss:.4f}, Acc={accuracy:.3f}, Best={best_accuracy:.3f}, LR={current_lr:.6f}, Patience={patience_counter}")
                 
-                if patience_counter >= 4 and epoch >= 50:  # Early stopping plus patient
+                if patience_counter >= 3 and epoch >= 35:  # Early stopping plus patient
                     print(f"   🛑 Early stopping à l'époque {epoch+1} (patience épuisée)")
                     break
                     
@@ -664,7 +686,7 @@ df["predicted_nature_encoded"] = predictions
 # Création d'une colonne pour les prédictions avec gestion des catégories rares
 predicted_labels = []
 for i, pred in enumerate(predictions):
-    original_category = df.iloc[i]["Nature"]
+    original_category = df.iloc[i][NATURE_COL]
     
     # Si la catégorie originale n'était pas dans l'entraînement, la marquer comme rare
     if original_category not in valid_categories:
@@ -675,21 +697,23 @@ for i, pred in enumerate(predictions):
     else:
         predicted_labels.append("CATÉGORIE_RARE")  # Sécurité pour les prédictions hors limites
 
-df["predicted_nature"] = predicted_labels
+
+PREDICTED_NATURE_COL = "predicted_nature_col"
+df[PREDICTED_NATURE_COL] = predicted_labels
 prediction_time = time.time() - start_time
 
 # Calcul de la précision en excluant les catégories rares des métriques
-valid_mask = df["Nature"].isin(valid_categories)
+valid_mask = df[NATURE_COL].isin(valid_categories)
 df_valid = df[valid_mask]
 
 # Ajout d'une colonne VRAI/FAUX pour indiquer si la prédiction est correcte
 df["prediction_correcte"] = df.apply(lambda row: 
-    "VRAI" if row["Nature"] == row["predicted_nature"] else "FAUX", axis=1)
+    "VRAI" if row[NATURE_COL] == row[PREDICTED_NATURE_COL] else "FAUX", axis=1)
 
 if len(df_valid) > 0:
     # Calcul de la précision SEULEMENT sur les catégories que le modèle a apprises
-    df_trainable = df[df["Nature"].isin(valid_categories)]
-    misclassified_trainable = (df_trainable["Nature"] != df_trainable["predicted_nature"]).sum()
+    df_trainable = df[df[NATURE_COL].isin(valid_categories)]
+    misclassified_trainable = (df_trainable[NATURE_COL] != df_trainable[PREDICTED_NATURE_COL]).sum()
     accuracy_trainable = ((len(df_trainable) - misclassified_trainable) / len(df_trainable)) * 100
     
     print(f"✅ Prédictions terminées en {prediction_time:.2f}s")
@@ -702,7 +726,7 @@ if len(df_valid) > 0:
     print(f"📈 Précision globale (toutes catégories): {global_accuracy:.1f}% ({correct_predictions}/{total_predictions} correctes)")
     
     # Statistiques détaillées des catégories rares
-    rare_items = df[~df["Nature"].isin(valid_categories)]
+    rare_items = df[~df[NATURE_COL].isin(valid_categories)]
     rare_count = len(rare_items)
     if rare_count > 0:
         print(f"⚠️  {rare_count} produits de catégories rares marqués comme 'CATÉGORIE_RARE'")
@@ -920,8 +944,8 @@ def extract_colors(text):
     
     return ", ".join(sorted(found_colors))
 
-df["dimension_extraite"] = df["Libellé produit"].apply(extract_dimensions)
-df["couleur_extraite"] = df["Libellé produit"].apply(extract_colors)
+df["dimension_extraite"] = df[LIBELLE_COL].apply(extract_dimensions)
+df["couleur_extraite"] = df[LIBELLE_COL].apply(extract_colors)
 
 # Statistiques d'extraction
 dimensions_found = df["dimension_extraite"].notna().sum()
