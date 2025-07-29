@@ -9,7 +9,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import LabelEncoder
 from text_processing import clean_text
 
-def load_excel_data(file_path, libelle_col="Libellé produit", nature_col="Nature", max_rows=None):
+def load_excel_data(file_path: str, libelle_col="Libellé produit", nature_col="Nature", max_rows=None):
     """
     Charge les données depuis un fichier Excel avec option de limitation du nombre de lignes.
     
@@ -28,7 +28,7 @@ def load_excel_data(file_path, libelle_col="Libellé produit", nature_col="Natur
         print(f"⚠️  Mode test: chargement limité à {max_rows} lignes")
     
     # Détection automatique du format et utilisation de l'engine approprié
-    if file_path.endswith('.xlsb'):
+    if file_path.endswith('.xlsb') or file_path.endswith('.xlsx'):
         try:
             # Essayer d'abord avec calamine (plus rapide pour .xlsb)
             if max_rows:
