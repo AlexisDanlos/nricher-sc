@@ -8,42 +8,36 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
-from sklearn.ensemble import RandomForestClassifier, VotingClassifier
-from sklearn.linear_model import LogisticRegression
 import numpy as np
-import joblib
 import pickle
 import os
 from datetime import datetime
 
 # Import des modules locaux
-from model_utils import TextClassifierNet, print_progress, print_configuration
-from data_processing import load_excel_data, prepare_data_for_training, create_tfidf_vectorizers, prepare_features, prepare_labels
+from model_utils import TextClassifierNet, print_progress
+from data_processing import load_excel_data, create_tfidf_vectorizers, prepare_features, prepare_labels
 
 # === CONFIGURATION ===
-FILE_PATH = "ecommerce_corrected_20250728_174305.xlsx"
+FILE_PATH = "ecommerce_corrected_20250729_184443.xlsx"
 LIBELLE_COL = "Libellé produit"
 NATURE_COL = "Nature"
 
 # Configuration des données
-LIMIT_ROWS = None  # Limiter pour les tests (ex: 20000), None pour tout charger
+LIMIT_ROWS = 10000  # Limiter pour les tests (ex: 20000), None pour tout charger
 
 # Configuration du modèle
-USE_GPU = True
-USE_ENSEMBLE = False  # Pour les modèles CPU
 BATCH_SIZE = 64
 EPOCHS = 100
 LEARNING_RATE = 0.001
 
-# Configuration CUDA
-if USE_GPU and torch.cuda.is_available():
+# Configuration CUDA - PyTorch peut utiliser CPU ou GPU automatiquement
+if torch.cuda.is_available():
     DEVICE = torch.device("cuda")
     print(f"🚀 GPU activé: {torch.cuda.get_device_name(0)}")
     print(f"   Mémoire disponible: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
 else:
     DEVICE = torch.device("cpu")
-    print("🖥️  Mode CPU activé")
+    print("🖥️  Mode CPU activé (PyTorch)")
 
 def main():
     """Fonction principale d'entraînement."""
@@ -104,26 +98,30 @@ def main():
     print(f"📊 Test: {X_test.shape[0]} échantillons")
     
     # === 5. ENTRAÎNEMENT DU MODÈLE ===
-    print_progress(5, "Entraînement du modèle")
+    print_progress(5, "Entraînement du modèle PyTorch")
     
-    if USE_GPU and torch.cuda.is_available():
-        test_score = train_pytorch_model(X_train, X_test, y_train, y_test, tfidf_configs, le_filtered, valid_categories)
-    else:
-        test_score = train_cpu_model(X_train, X_test, y_train, y_test, le_filtered, valid_categories)
+    test_score = train_pytorch_model(X_train, X_test, y_train, y_test, tfidf_configs, le_filtered, valid_categories)
     
     print(f"🎯 Score final: {test_score:.4f}")
     print("🎉 Entraînement terminé avec succès!")
 
 def train_pytorch_model(X_train, X_test, y_train, y_test, tfidf_configs, le_filtered, valid_categories):
-    """Entraîne le modèle PyTorch GPU - Méthode exacte du backup."""
+    """Entraîne le modèle PyTorch - Compatible CPU/GPU."""
     
-    # Configuration du modèle (même que backup)
+    # Configuration du modèle adaptatif selon le device
     input_size = X_train.shape[1]
-    hidden_size = min(1024, input_size // 4)  # Architecture plus raisonnable pour GPU
-    num_classes = len(le_filtered.classes_)
     
-    # Utiliser des batches plus petits pour économiser la mémoire GPU
-    batch_size = 64  # Réduit pour éviter OOM
+    # Adapter l'architecture selon le device et la taille des données
+    if DEVICE.type == 'cuda':
+        hidden_size = min(1024, input_size // 4)  # Architecture GPU
+        batch_size = 64
+        print(f"🔥 Entraînement modèle PyTorch sur GPU avec {len(le_filtered.classes_)} catégories...")
+    else:
+        hidden_size = min(512, input_size // 6)   # Architecture CPU plus légère
+        batch_size = 32
+        print(f"🖥️  Entraînement modèle PyTorch sur CPU avec {len(le_filtered.classes_)} catégories...")
+        
+    num_classes = len(le_filtered.classes_)
     
     config = {
         "input_size": input_size,
@@ -136,11 +134,9 @@ def train_pytorch_model(X_train, X_test, y_train, y_test, tfidf_configs, le_filt
         "dropout_rate": 0.4
     }
     
-    # Entraînement d'un seul modèle optimisé au lieu d'ensemble pour économiser la mémoire
-    print(f"🔥 Entraînement modèle optimisé sur GPU ({DEVICE}) avec {num_classes} catégories...")
     print(f"📊 Architecture: {input_size} → {hidden_size} → {hidden_size//2} → {hidden_size//4} → {num_classes}")
-    print(f"⚙️  Paramètres: Batch={batch_size}, LR=0.001, Dropout=0.4, Label Smoothing=0.1")
-    print(f"🎯 Objectif: Maximiser la précision (actuel: validation tous les 5 époques)")
+    print(f"⚙️  Paramètres: Batch={batch_size}, LR={LEARNING_RATE}, Dropout=0.4, Label Smoothing=0.1")
+    print(f"🎯 Device: {DEVICE}, Validation tous les 5 époques")
     print("-" * 60)
     
     model = TextClassifierNet(
@@ -153,7 +149,7 @@ def train_pytorch_model(X_train, X_test, y_train, y_test, tfidf_configs, le_filt
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
     optimizer = optim.AdamW(
         model.parameters(), 
-        lr=0.001, 
+        lr=LEARNING_RATE, 
         weight_decay=1e-4,
         betas=(0.9, 0.999)
     )
@@ -161,7 +157,7 @@ def train_pytorch_model(X_train, X_test, y_train, y_test, tfidf_configs, le_filt
         optimizer, T_0=10, T_mult=2
     )
     
-    # Utiliser des batches plus petits pour économiser la mémoire GPU
+    # Créer les datasets avec la bonne taille de batch
     train_dataset = TensorDataset(
         torch.FloatTensor(X_train).to(DEVICE),
         torch.LongTensor(y_train).to(DEVICE)
@@ -178,7 +174,7 @@ def train_pytorch_model(X_train, X_test, y_train, y_test, tfidf_configs, le_filt
     patience_counter = 0
     best_model_state = None
     
-    for epoch in range(100):  # Plus d'époques pour un seul modèle
+    for epoch in range(EPOCHS):  # Utiliser la variable globale EPOCHS
         total_loss = 0
         batch_count = 0
         
@@ -270,71 +266,12 @@ def train_pytorch_model(X_train, X_test, y_train, y_test, tfidf_configs, le_filt
     # Créer le wrapper
     pipeline = SingleModelWrapper(model, DEVICE)
     
-    # Score final
+    # Score final avec PyTorch
     final_predictions = pipeline.predict(X_test)
-    test_score = (final_predictions == y_test).mean()
+    test_score = (final_predictions == y_test).mean()  # Calculer l'accuracy directement
     
     # Sauvegarde du modèle
     save_pytorch_model(model, tfidf_configs, le_filtered, test_score, config, valid_categories, X_train, X_test)
-    
-    return test_score
-
-def train_cpu_model(X_train, X_test, y_train, y_test, le_filtered, valid_categories):
-    """Entraîne le modèle CPU (Random Forest ou Ensemble)."""
-    
-    if USE_ENSEMBLE:
-        print("🌲 Entraînement du modèle ensemble...")
-        
-        # Création des modèles de base
-        rf = RandomForestClassifier(
-            n_estimators=200,
-            max_depth=30,
-            min_samples_split=5,
-            min_samples_leaf=2,
-            random_state=42,
-            oob_score=True,
-            n_jobs=-1
-        )
-        
-        lr = LogisticRegression(
-            max_iter=1000,
-            random_state=42,
-            n_jobs=-1
-        )
-        
-        # Ensemble voting
-        ensemble = VotingClassifier(
-            estimators=[('rf', rf), ('lr', lr)],
-            voting='soft',
-            n_jobs=-1
-        )
-        
-        ensemble.fit(X_train, y_train)
-        pipeline = ensemble
-        
-    else:
-        print("🌲 Entraînement du Random Forest...")
-        
-        rf = RandomForestClassifier(
-            n_estimators=300,
-            max_depth=40,
-            min_samples_split=5,
-            min_samples_leaf=2,
-            random_state=42,
-            oob_score=True,
-            n_jobs=-1
-        )
-        
-        rf.fit(X_train, y_train)
-        pipeline = rf
-    
-    # Évaluation
-    test_predicted = pipeline.predict(X_test)
-    test_score = accuracy_score(y_test, test_predicted)
-    print(f"✅ Précision sur le test: {test_score:.4f}")
-    
-    # Sauvegarde
-    save_cpu_model(pipeline, le_filtered, test_score, X_train, X_test)
     
     return test_score
 
@@ -374,15 +311,15 @@ def save_pytorch_model(model, tfidf_configs, le_filtered, test_score, config, va
         
         # Sauvegarder les métadonnées
         metadata = {
-            'model_type': 'pytorch_gpu',
+            'model_type': 'pytorch',
             'timestamp': timestamp,
             'test_score': test_score,
             'num_classes': config['num_classes'],
             'valid_categories': valid_categories.tolist(),
             'training_samples': len(X_train),
             'test_samples': len(X_test),
-            'use_ensemble': False,
-            'device': str(DEVICE)
+            'device': str(DEVICE),
+            'architecture': f"{config['input_size']} → {config['hidden_size']} → {config['num_classes']}"
         }
         with open(metadata_filename, 'wb') as f:
             pickle.dump(metadata, f)
@@ -390,59 +327,6 @@ def save_pytorch_model(model, tfidf_configs, le_filtered, test_score, config, va
         print(f"✅ Modèle PyTorch sauvegardé:")
         print(f"   📁 Modèle: {model_filename}")
         print(f"   📁 TF-IDF: {tfidf_filename}")
-        print(f"   📁 Encodeur: {label_encoder_filename}")
-        print(f"   📁 Métadonnées: {metadata_filename}")
-        
-    except Exception as e:
-        print(f"❌ Erreur lors de la sauvegarde: {e}")
-
-def save_cpu_model(pipeline, le_filtered, test_score, X_train, X_test):
-    """Sauvegarde le modèle CPU."""
-    
-    print_progress(6, "Sauvegarde du modèle CPU")
-    
-    # Création du dossier
-    model_dir = "models"
-    os.makedirs(model_dir, exist_ok=True)
-    
-    # Génération des noms de fichiers
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    if USE_ENSEMBLE:
-        model_filename = f"{model_dir}/ensemble_model_{timestamp}.pkl"
-        model_type = 'ensemble_cpu'
-    else:
-        model_filename = f"{model_dir}/randomforest_model_{timestamp}.pkl"
-        model_type = 'randomforest_cpu'
-    
-    label_encoder_filename = f"{model_dir}/label_encoder_{timestamp}.pkl"
-    metadata_filename = f"{model_dir}/model_metadata_{timestamp}.pkl"
-    
-    try:
-        # Sauvegarder le pipeline
-        joblib.dump(pipeline, model_filename)
-        
-        # Sauvegarder le label encoder
-        with open(label_encoder_filename, 'wb') as f:
-            pickle.dump(le_filtered, f)
-        
-        # Sauvegarder les métadonnées
-        metadata = {
-            'model_type': model_type,
-            'timestamp': timestamp,
-            'test_score': test_score,
-            'num_classes': len(le_filtered.classes_),
-            'valid_categories': [],  # CPU model doesn't use this but keep for compatibility
-            'training_samples': len(X_train),
-            'test_samples': len(X_test),
-            'use_ensemble': USE_ENSEMBLE,
-            'device': 'cpu'
-        }
-        with open(metadata_filename, 'wb') as f:
-            pickle.dump(metadata, f)
-        
-        print(f"✅ Modèle CPU sauvegardé:")
-        print(f"   📁 Pipeline: {model_filename}")
         print(f"   📁 Encodeur: {label_encoder_filename}")
         print(f"   📁 Métadonnées: {metadata_filename}")
         
