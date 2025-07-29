@@ -33,6 +33,8 @@ color_mapping = {
     "marron": "marron", "marrons": "marron",
     "bois": "bois", "boisé": "bois", "boisée": "bois", "boisés": "bois", "boisées": "bois",
     "chêne": "chêne", "chênes": "chêne",
+    "ch ne": "chêne", "ch nes": "chêne",
+    "chene": "chêne", "chenes": "chêne",
     "acajou": "acajou", "acajous": "acajou",
     "teck": "teck", "tecks": "teck",
     "bambou": "bambou", "bambous": "bambou",
@@ -102,6 +104,48 @@ def extract_dimensions(text):
     Retourne les dimensions sous format standardisé ou None si aucune trouvée.
     """
     text = str(text)
+    # Simplify cases like '95 105h' to '95h' (ignore secondary number before 'h')
+    text = re.sub(r"(\d+)\s+\d+h", r"\1h", text)
+    
+    # Filtrer les codes produits longs et références techniques (comme 484000008582, 481281718533, etc.)
+    # Ces codes sont souvent de longs nombres ou alphanumériques qu'on veut exclure
+    # Détecter si le texte contient beaucoup de codes produits (indicateur: plusieurs longs codes numériques)
+    long_codes = re.findall(r'\b\d{8,}\b', text)  # Codes de 8+ chiffres
+    alphanumeric_codes = re.findall(r'\b[a-zA-Z]\d+[a-zA-Z]*\d*\b', text, re.IGNORECASE)  # Codes comme d085, chf85, amc859, ac40
+    
+    if len(long_codes) >= 2 or (len(long_codes) >= 1 and len(alphanumeric_codes) >= 3):
+        # Ce texte semble être principalement des codes produits, très peu de chance d'avoir de vraies dimensions
+        # Exemples détectés: "484000008582 nyttig fil 100 481281718533 chf85 1 type 10 amc859 ac40"
+        return None
+    
+    # Filtrer les téléphones et appareils mobiles (Nokia, iPhone, Samsung, etc.)
+    # Ces produits n'ont généralement pas de dimensions physiques utiles à extraire
+    # Être plus précis pour éviter de filtrer les meubles qui mentionnent ces marques
+    phone_indicators = 0
+    
+    # Vérifier les patterns de téléphones
+    if re.search(r'\b(nokia|iphone)\s+\d+', text, re.IGNORECASE):
+        phone_indicators += 2  # Nokia/iPhone + numéro = très probablement un téléphone
+    
+    if re.search(r'\b(samsung|huawei|xiaomi|sony|lg)\s+(galaxy|redmi|xperia|p\d+|v\d+)', text, re.IGNORECASE):
+        phone_indicators += 2  # Marque + modèle de téléphone connu
+    
+    if re.search(r'\b(smartphone|mobile\s+phone)\b', text, re.IGNORECASE):
+        phone_indicators += 1  # Mots-clés téléphone explicites
+    
+    if re.search(r'\b(double|dual)\s+(sim|carte)', text, re.IGNORECASE):
+        phone_indicators += 1  # Double sim
+    
+    if re.search(r'\b\d+gb\s+(ram|stockage|mémoire)', text, re.IGNORECASE):
+        phone_indicators += 1  # Spécifications mobiles
+    
+    # Ne filtrer que si on a plusieurs indicateurs de téléphone ET pas de dimensions claires
+    if phone_indicators >= 2:
+        # Vérifier s'il n'y a pas de dimensions explicites avec unités (cm, mm)
+        if not re.search(r'\d+\s*[xX×*]\s*\d+\s*(cm|mm)', text, re.IGNORECASE):
+            # Ce texte semble décrire un téléphone sans dimensions physiques claires
+            # Exemple détecté: "Nokia 105 2017 double sim blanc"
+            return None
     
     # Exclure les unités de poids et autres unités non-dimensionnelles
     if re.search(r'\d+\s*kg\b', text, re.IGNORECASE):
@@ -114,12 +158,91 @@ def extract_dimensions(text):
     if re.search(r'tv\s+\d+\s+\d+', text, re.IGNORECASE):
         return None
     
+    # Filtrer les appareils électriques avec puissance (wattage, voltage, etc.)
+    # Exemples: "grille pain pc ta 1073 1500 w", "mixeur 500w", "aspirateur 1200w"
+    electrical_indicators = 0
+    
+    if re.search(r'\b\d+\s*w\b', text, re.IGNORECASE):  # Wattage
+        electrical_indicators += 2
+    
+    if re.search(r'\b\d+\s*(watts?|volts?|ampères?|amps?)\b', text, re.IGNORECASE):  # Autres unités électriques
+        electrical_indicators += 2
+    
+    if re.search(r'\b(grille.pain|mixeur|aspirateur|sèche.cheveux|micro.onde|four|frigo|lave)', text, re.IGNORECASE):  # Appareils électriques
+        electrical_indicators += 1
+    
+    if re.search(r'\b(proficook|moulinex|philips|bosch|siemens)\b', text, re.IGNORECASE):  # Marques d'électroménager
+        electrical_indicators += 1
+    
+    # Filtrer si plusieurs indicateurs d'appareil électrique et pas de dimensions avec unités claires
+    if electrical_indicators >= 2:
+        if not re.search(r'\d+\s*[xX×*]\s*\d+\s*(cm|mm)', text, re.IGNORECASE):
+            # Ce texte semble décrire un appareil électrique sans dimensions physiques claires
+            # Exemple détecté: "Proficook grille pain pc ta 1073 1500 w"
+            return None
+    
+    # Filtrer les accessoires informatiques et électroniques (adaptateurs, chargeurs, etc.)
+    # Exemples: "adaptateur alimentation chargeur pour ordinateur portable dell inspiron 15 3521 7537"
+    computer_indicators = 0
+    
+    if re.search(r'\b(adaptateur|chargeur|alimentation|ordinateur|portable|laptop)\b', text, re.IGNORECASE):
+        computer_indicators += 1
+    
+    if re.search(r'\b(dell|hp|lenovo|asus|acer|toshiba|apple|macbook|rowenta|hobby\s*tech)\b', text, re.IGNORECASE):
+        computer_indicators += 1
+    
+    if re.search(r'\b(inspiron|thinkpad|pavilion|aspire|air\s*force)\b', text, re.IGNORECASE):  # Gammes de PC et aspirateurs
+        computer_indicators += 1
+    
+    # Ajouter indicateur pour voltage spécifique aux chargeurs
+    if re.search(r'\b\d+v\s+\d+\s+\d+a\b', text, re.IGNORECASE):  # Pattern voltage + ampérage avec espaces
+        computer_indicators += 2
+    
+    # Filtrer si plusieurs indicateurs d'informatique et beaucoup de références numériques
+    if computer_indicators >= 2:
+        model_numbers = re.findall(r'\d{4,5}', text)  # Codes modèles 4-5 chiffres (match anywhere)
+        if len(model_numbers) >= 1:  # Au moins une référence de modèle (réduit de 3 à 1)
+            # Ce texte semble décrire des accessoires informatiques avec références
+            # Exemple détecté: "Chargeur compatible rh5664 29v 0 75a pour aspirateur rowenta air force 360"
+            return None
+    
+    # Spécial: 2D cm avec code produit prefixe: "01 80x40cm" -> "80*40"
+    m2 = re.search(r"\b\d+\s+(\d+)[xX×*](\d+)cm\b", text)
+    if m2:
+        return f"{m2.group(1)}*{m2.group(2)}"
+    # Spécial: dimensions l/h 3D: "94l x 38l x 95h cm" -> "94*38*95"
+    m_l3 = re.search(r"\b(\d+(?:[,\.]\d+)?)l\s*[xX×*]\s*(\d+(?:[,\.]\d+)?)l\s*[xX×*]\s*(\d+(?:[,\.]\d+)?)h\s*cm\b", text, re.IGNORECASE)
+    if m_l3:
+        g = m_l3.groups()
+        return f"{g[0].replace(',','.')}*{g[1].replace(',','.')}*{g[2].replace(',','.')}"
+    # Spécial: dimensions 3D décimales en mètres: "3 33x2 06x1 17m" -> "3.33*2.06*1.17"
+    m3 = re.search(r"\b(\d+)\s+(\d+)[xX×*](\d+)\s+(\d+)[xX×*](\d+)\s+(\d+)m\b", text)
+    if m3:
+        g = m3.groups()
+        dim1 = f"{g[0]}.{g[1]}"
+        dim2 = f"{g[2]}.{g[3]}"
+        dim3 = f"{g[4]}.{g[5]}"
+        return f"{dim1}*{dim2}*{dim3}"
     # Patterns pour différents formats de dimensions (ordre de priorité important)
     patterns = [
+        # Format extensible avec range: "extensible 70 105 x 22 x 4 cm" -> "105*22*4" (prendre les vraies dimensions, pas le range)
+        r'extensible\s+\d+\s+(\d+(?:[,\.]\d+)?)\s*[xX×*]\s*(\d+(?:[,\.]\d+)?)\s*[xX×*]\s*(\d+(?:[,\.]\d+)?)\s*cm',
+        # Format avec espaces décimaux 2D à la fin: "11x28 3 cm" -> "11*28.3" (HIGH PRIORITY - must not have additional x)  
+        r'(\d+(?:[,\.]\d+)?)[xX×*](\d+)\s+(\d+)\s*cm(?!\s*[xX×*])',
+        # Format avec espaces décimaux 3D à la fin: "55 x 198 x 40 5 cm" -> "55*198*40.5" (HIGH PRIORITY)
+        r'(\d+(?:[,\.]\d+)?)\s*[xX×*]\s*(\d+(?:[,\.]\d+)?)\s*[xX×*]\s*(\d+)\s+(\d+)\s*cm',
         # Format avec espaces décimaux avec 0: "50 0 x 50 0 x 177 8 cm" -> "50.0*50.0*177.8"
         r'(\d+)\s+0\s*[xX×*]\s*(\d+)\s+0\s*[xX×*]\s*(\d+)\s+(\d+)\s*cm',
+        # Format avec espaces décimaux 3D: "25 5x25 5x55cm" -> "25.5*25.5*55" (priorité très haute)
+        r'(\d+)\s+(\d+)\s*[xX×*]\s*(\d+)\s+(\d+)\s*[xX×*]\s*(\d+(?:[,\.]\d+)?)\s*cm',
         # Format dimensions principales 3D: "100x38x38 cm" -> "100*38*38" (priorité haute)
         r'(\d+(?:[,\.]\d+)?)[xX×*](\d+(?:[,\.]\d+)?)[xX×*](\d+(?:[,\.]\d+)?)\s*cm\b',
+        # Format dimensions principales 2D avec cm: "160x230cm" -> "160*230" (priorité très haute)
+        r'(\d+(?:[,\.]\d+)?)[xX×*](\d+(?:[,\.]\d+)?)cm\b',
+        # Format dimensions principales 3D avec mm: "230x210x30mm" -> "230*210*30" (priorité très haute)
+        r'(\d+(?:[,\.]\d+)?)[xX×*](\d+(?:[,\.]\d+)?)[xX×*](\d+(?:[,\.]\d+)?)mm\b',
+        # Format dimensions principales 2D avec mm: "160x230mm" -> "160*230" (priorité très haute)
+        r'(\d+(?:[,\.]\d+)?)[xX×*](\d+(?:[,\.]\d+)?)mm\b',
         # Format dimensions principales 2D: "160x200" -> "160*200" (priorité haute, avant les petits nombres)
         r'\b(\d{2,3})[xX×*](\d{2,3})\b(?!\s*kg)(?!\s*[xX×*]\d+)',
         # Format avec l/h notation avec espaces décimaux: "l 80 x 39 5 x h 75cm" -> "80*39.5*75"
@@ -136,20 +259,22 @@ def extract_dimensions(text):
         r'[lph]\s*(\d+(?:[,\.]\d+)?)\s*[xX×*]\s*[lph]\s*(\d+(?:[,\.]\d+)?)\s*[xX×*]\s*[lph]\s*(\d+(?:[,\.]\d+)?)\s*cm',
         # Format avec l/p mixtes 2D: "l 205 x p 80 cm" -> "205*80"
         r'[lph]\s*(\d+(?:[,\.]\d+)?)\s*[xX×*]\s*[lph]\s*(\d+(?:[,\.]\d+)?)\s*cm',
-        # Format 3D avec cm: "108 x 32 5 x 48 cm" -> "108 x 32.5 x 48" (HIGH PRIORITY for 4 groups)
+        # Format avec préfixes collés 3D: "lo45xla45xh170 cm" -> "45*45*170"
+        r'[a-z]{1,3}(\d+(?:[,\.]\d+)?)[xX×*][a-z]{1,3}(\d+(?:[,\.]\d+)?)[xX×*][a-z]{1,3}(\d+(?:[,\.]\d+)?)\s*cm',
+        # Format 3D avec cm: "108 x 32 5 x 48 cm" ou "143 x 36 x 178 cm" -> "108 x 32.5 x 48" (HIGH PRIORITY for 4 groups)
         r'(\d+(?:[,\.]\d+)?)\s*[xX×*]\s*(\d+)\s+(\d+)\s*[xX×*]\s*(\d+)\s*cm',
         # Format avec espaces décimaux au milieu: "38 5 x 54 cm" -> "38.5*54" (HIGH PRIORITY for 3 groups)
         r'(\d+)\s+(\d+)\s*[xX×*]\s*(\d+(?:[,\.]\d+)?)\s*cm',
         # Format cm après chaque dimension: "112 cm x 207 cm x 57 cm" -> "112*207*57"
         r'(\d+(?:[,\.]\d+)?)\s*cm\s*[xX×*]\s*(\d+(?:[,\.]\d+)?)\s*cm\s*[xX×*]\s*(\d+(?:[,\.]\d+)?)\s*cm',
-        # Format éviter multiplicateurs petits: éviter "2x20" si dimensions principales présentes
-        r'(?<!\d[xX×*])(\d{2,})\s+(\d{2,})(?!\s*[xX×*])(?!\s*kg)',
         # Format sommier éviter multiplicateur: "2x90x200" -> "90*200"
         r'\d+[xX×*](\d+(?:[,\.]\d+)?)[xX×*](\d+(?:[,\.]\d+)?)\s*cm',
         # Format avec espaces décimaux sans cm: "3x7 5 m" -> "3*7.5"
         r'(\d+(?:[,\.]\d+)?)[xX×*](\d+)\s+(\d+)\s*m',
         # Format avec espaces décimaux 2D avec m: "1 5 x 10m" -> "1.5*10"
         r'(\d+)\s+(\d+)\s*[xX×*]\s*(\d+(?:[,\.]\d+)?)m',
+        # Format avec espaces décimaux 3D avec m: "3 33x2 06x1 17m" -> "3.33*2.06*1.17"
+        r'(\d+)\s+(\d+)\s*[xX×*]\s*(\d+)\s+(\d+)\s*[xX×*]\s*(\d+)\s+(\d+)m',
         # Format avec espaces dans les décimaux: "39 5" -> "39.5"
         r'(\d+)\s+(\d)\s*[xX×*]\s*(\d+(?:[,\.]\d+)?)\s*[xX×*]\s*(\d+(?:[,\.]\d+)?)',
         # Format unités mixtes: "27 5 cm 3m" -> "27.5*3"
@@ -170,32 +295,52 @@ def extract_dimensions(text):
         if matches:
             dimensions = []
             for match in matches:
-                if len(match) == 4:
-                    if pattern_idx == 0:  # Format avec espaces décimaux avec 0
+                if len(match) == 6:
+                    if pattern_idx == 24:  # Format avec espaces décimaux 3D avec m: "3 33x2 06x1 17m" (updated index +1)
+                        dim1 = match[0] + '.' + match[1]  # "3" + "." + "33" = "3.33"
+                        dim2 = match[2] + '.' + match[3]  # "2" + "." + "06" = "2.06"
+                        dim3 = match[4] + '.' + match[5]  # "1" + "." + "17" = "1.17"
+                        dimensions.append(f"{dim1}*{dim2}*{dim3}")
+                        main_dimension_found = True
+                elif len(match) == 5:
+                    if pattern_idx == 4:  # Format avec espaces décimaux 3D: "25 5x25 5x55cm" (index shifted +1)
+                        dim1 = match[0] + '.' + match[1]  # "25" + "." + "5" = "25.5"
+                        dim2 = match[2] + '.' + match[3]  # "25" + "." + "5" = "25.5"
+                        dim3 = match[4].replace(',', '.')
+                        dimensions.append(f"{dim1}*{dim2}*{dim3}")
+                        main_dimension_found = True
+                elif len(match) == 4:
+                    if pattern_idx == 2:  # Format avec espaces décimaux 3D à la fin: "55 x 198 x 40 5 cm" -> "55*198*40.5"
+                        dim1 = match[0].replace(',', '.')
+                        dim2 = match[1].replace(',', '.')
+                        dim3 = match[2] + '.' + match[3]  # "40" + "." + "5" = "40.5"
+                        dimensions.append(f"{dim1}*{dim2}*{dim3}")
+                        main_dimension_found = True
+                    elif pattern_idx == 3:  # Format avec espaces décimaux avec 0 (index shifted +1)
                         dim1 = match[0] + '.0'
                         dim2 = match[1] + '.0'
                         dim3 = match[2] + '.' + match[3]
                         dimensions.append(f"{dim1}*{dim2}*{dim3}")
                         main_dimension_found = True
-                    elif pattern_idx == 3:  # Format l/h avec espaces décimaux
+                    elif pattern_idx == 10:  # Format l/h avec espaces décimaux (index shifted +1)
                         dim1 = match[0].replace(',', '.')
                         dim2 = match[1] + '.' + match[2]  # "39" + "." + "5" = "39.5"
                         dim3 = match[3].replace(',', '.')
                         dimensions.append(f"{dim1}*{dim2}*{dim3}")
                         main_dimension_found = True
-                    elif pattern_idx == 6:  # Format l/h avec espaces décimaux à la fin
+                    elif pattern_idx == 13:  # Format l/h avec espaces décimaux à la fin (index shifted +1)
                         dim1 = match[0].replace(',', '.')
                         dim2 = match[1].replace(',', '.')
                         dim3 = match[2] + '.' + match[3]  # "54" + "." + "5" = "54.5"
                         dimensions.append(f"{dim1}*{dim2}*{dim3}")
                         main_dimension_found = True
-                    elif pattern_idx == 17:  # Format avec espaces dans les décimaux
+                    elif pattern_idx == 25:  # Format avec espaces dans les décimaux (index shifted +1)
                         # "39 5" -> "39.5"
                         dim1 = match[0] + '.' + match[1]
                         dim2 = match[2].replace(',', '.')
                         dim3 = match[3].replace(',', '.')
                         dimensions.append(f"{dim1}*{dim2}*{dim3}")
-                    elif pattern_idx == 10:  # Format spécial "108 x 32 5 x 48"
+                    elif pattern_idx == 18:  # Format spécial "108 x 32 5 x 48" (index shifted +1)
                         # Combine le 2e et 3e groupe: "32" + "5" = "32.5"
                         dim1 = match[0].replace(',', '.')
                         dim2 = match[1] + '.' + match[2]  # "32" + "." + "5" = "32.5"
@@ -203,31 +348,42 @@ def extract_dimensions(text):
                         dimensions.append(f"{dim1}*{dim2}*{dim3}")
                         main_dimension_found = True
                 elif len(match) == 3:
-                    if pattern_idx in [1, 4, 7, 8, 12, 21]:  # Formats avec l/h/p/cm
+                    if pattern_idx == 0:  # Format extensible: "extensible 70 105 x 22 x 4 cm" -> "105*22*4"
+                        # Prendre les 3 groupes capturés comme dimensions (ignore le range extensible)
+                        dim_parts = [part.replace(',', '.') for part in match if part]
+                        if len(dim_parts) == 3:
+                            dimensions.append("*".join(dim_parts))
+                            main_dimension_found = True
+                    elif pattern_idx == 1:  # Format avec espaces décimaux 2D à la fin: "11x28 3 cm" -> "11*28.3"
+                        dim1 = match[0].replace(',', '.')
+                        dim2 = match[1] + '.' + match[2]
+                        dimensions.append(f"{dim1}*{dim2}")
+                        main_dimension_found = True
+                    elif pattern_idx in [5, 7, 11, 14, 15, 17, 20, 29]:  # Formats avec l/h/p/cm/mm (updated indices +1)
                         dim_parts = [part.replace(',', '.') for part in match if part]
                         if len(dim_parts) == 3:
                             # Vérifier si c'est une vraie dimension (pas trop petite)
                             dims = [float(d) for d in dim_parts]
-                            if min(dims) >= 10 or pattern_idx == 1:  # Dimensions principales ou format avec cm
+                            if min(dims) >= 10 or pattern_idx in [5, 7]:  # Dimensions principales ou format avec cm/mm (updated indices +1)
                                 dimensions.append("*".join(dim_parts))
-                                if pattern_idx == 1:  # Format avec cm = priorité haute
+                                if pattern_idx in [5, 7]:  # Format avec cm/mm = priorité haute (updated indices +1)
                                     main_dimension_found = True
-                    elif pattern_idx == 11:  # Format avec espaces décimaux au milieu: "38 5 x 54 cm"
+                    elif pattern_idx == 20:  # Format avec espaces décimaux au milieu: "38 5 x 54 cm" (updated index +1)
                         dim1 = match[0] + '.' + match[1]  # "38" + "." + "5" = "38.5"
                         dim2 = match[2].replace(',', '.')
                         dimensions.append(f"{dim1}*{dim2}")
                         main_dimension_found = True
-                    elif pattern_idx == 15:  # Format avec espaces décimaux sans cm: "3x7 5 m"
+                    elif pattern_idx == 23:  # Format avec espaces décimaux sans cm: "3x7 5 m" (updated index +1)
                         dim1 = match[0].replace(',', '.')
                         dim2 = match[1] + '.' + match[2]  # "7" + "." + "5" = "7.5"
                         dimensions.append(f"{dim1}*{dim2}")
                         main_dimension_found = True
-                    elif pattern_idx == 16:  # Format avec espaces décimaux 2D avec m: "1 5 x 10m"
+                    elif pattern_idx == 25:  # Format avec espaces décimaux 2D avec m: "1 5 x 10m" (updated index +1)
                         dim1 = match[0] + '.' + match[1]  # "1" + "." + "5" = "1.5"
                         dim2 = match[2].replace(',', '.')
                         dimensions.append(f"{dim1}*{dim2}")
                         main_dimension_found = True
-                    elif pattern_idx == 18:  # Format unités mixtes "27 5 cm 3m"
+                    elif pattern_idx == 27:  # Format unités mixtes "27 5 cm 3m" (updated index +1)
                         # "27 5" -> "27.5"
                         dim1 = match[0] + '.' + match[1]
                         dim2 = match[2].replace(',', '.')
@@ -238,7 +394,17 @@ def extract_dimensions(text):
                         if len(dim_parts) == 3:
                             dimensions.append("*".join(dim_parts))
                 elif len(match) == 2:
-                    if pattern_idx == 2:  # Format dimensions principales 2D - priorité haute
+                    if pattern_idx == 7:  # Format dimensions principales 2D avec cm: "160x230cm" (updated index +1)
+                        dim1 = match[0].replace(',', '.')
+                        dim2 = match[1].replace(',', '.')
+                        dimensions.append(f"{dim1}*{dim2}")
+                        main_dimension_found = True
+                    elif pattern_idx == 9:  # Format dimensions principales 2D avec mm: "160x230mm" (updated index +1)
+                        dim1 = match[0].replace(',', '.')
+                        dim2 = match[1].replace(',', '.')
+                        dimensions.append(f"{dim1}*{dim2}")
+                        main_dimension_found = True
+                    elif pattern_idx == 10:  # Format dimensions principales 2D - priorité haute (updated index +1)
                         dim1 = match[0].replace(',', '.')
                         dim2 = match[1].replace(',', '.')
                         # Vérifier que ce sont des dimensions raisonnables (pas des codes produit)
@@ -249,22 +415,24 @@ def extract_dimensions(text):
                                 main_dimension_found = True
                         except:
                             pass
-                    elif pattern_idx in [5, 9]:  # Format diam ou l/p 2D
+                    elif pattern_idx in [12, 16]:  # Format diam ou l/p 2D (updated indices +1)
                         dim_parts = [part.replace(',', '.') for part in match if part]
                         if len(dim_parts) == 2:
                             dimensions.append("*".join(dim_parts))
                             main_dimension_found = True
-                    elif pattern_idx in [13, 14]:  # Format éviter multiplicateurs
+                    elif pattern_idx in [21, 22]:  # Format éviter multiplicateurs (updated indices +1)
                         dim1 = match[0].replace(',', '.')
                         dim2 = match[1].replace(',', '.')
                         # Éviter les petites valeurs qui sont probablement des multiplicateurs
+                        # Aussi éviter les nombres commençant par 0 (codes produits)
                         try:
                             d1, d2 = float(dim1), float(dim2)
-                            if d1 >= 20 and d2 >= 20:  # Seulement les dimensions >= 20
+                            if (d1 >= 20 and d2 >= 20 and 
+                                not match[0].startswith('0') and not match[1].startswith('0')):  
                                 dimensions.append(f"{dim1}*{dim2}")
                         except:
                             pass
-                    elif pattern_idx == 19:  # Format avec cm collé
+                    elif pattern_idx == 28:  # Format avec cm collé (updated index +1)
                         dim_parts = [part.replace(',', '.') for part in match if part]
                         if len(dim_parts) == 2:
                             dimensions.append("*".join(dim_parts))
@@ -283,7 +451,7 @@ def extract_dimensions(text):
             if dimensions:
                 found_dimensions.extend(dimensions)
                 # Si on a trouvé une dimension principale, arrêter la recherche
-                if main_dimension_found and pattern_idx <= 2:
+                if main_dimension_found and pattern_idx <= 6:
                     break
     
     if found_dimensions:
@@ -294,6 +462,11 @@ def extract_dimensions(text):
             if dim not in seen:
                 unique_dimensions.append(dim)
                 seen.add(dim)
+        
+        # Filtrer les dimensions contenant des segments avec zéro en tête (codes produits)
+        filtered_dims = [dim for dim in unique_dimensions if not any(part.startswith('0') and not part.startswith('0.') for part in dim.split('*'))]
+        if filtered_dims:
+            unique_dimensions = filtered_dims
         
         # Si plusieurs dimensions, privilégier la plus grande (dimension principale)
         if len(unique_dimensions) > 1:
