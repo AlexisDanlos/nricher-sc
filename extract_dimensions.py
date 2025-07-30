@@ -21,6 +21,16 @@ def extract_dimensions(text):
         return f"{a}.{b}*{c}"
     # Remove standalone meter suffixes to avoid treating as dimension: e.g., '3m'
     text = re.sub(r"\b(\d+(?:[.,]\d+)?)m\b", "", text)
+    # Special: headboard single dimension, matching accented or unaccented 'Tête de lit'
+    if re.search(r"\b(?:[tT] ?te|[tT]ête)\s+de\s+lit\b", original_text, re.IGNORECASE):
+        # look for number with unit
+        m_head = re.search(r"\b(\d+(?:[.,]\d+)?)\s*(?:cm|mm|m)\b", original_text, re.IGNORECASE)
+        if m_head:
+            return m_head.group(1).replace(',', '.')
+        # fallback to any number
+        m_head2 = re.search(r"\b(\d+)\b", original_text)
+        if m_head2:
+            return m_head2.group(1)
     # Quick exit: skip texts without 'x' separators unless special keywords
     if sep_count == 0 and not re.search(r"\b(Surmatelas|prot[eéè]ge matelas|dimensions|Matelas)\b", original_text, re.IGNORECASE):
         return None
@@ -95,6 +105,19 @@ def extract_dimensions(text):
     if m_prefix_space_dec:
         i1, d2_int, d2_frac, h = m_prefix_space_dec.groups()
         return f"{i1}*{d2_int}.{d2_frac}*{h}"
+    # Special: prefix 'l X x p Y x h Z' without 'cm'
+    m_prefix_nocm = re.search(
+        r"\b[lL]\s*(\d+(?:[.,]\d+)?)\s*[xX×*]\s*[pP]\s*(\d+(?:[.,]\d+)?)\s*[xX×*]\s*[hH]\s*(\d+(?:[.,]\d+)?)\b",
+        original_text,
+        re.IGNORECASE
+    )
+    if m_prefix_nocm:
+        a, b, c = m_prefix_nocm.groups()
+        # normalize decimals and spaces
+        a_norm = a.replace(',', '.').replace(' ', '')
+        b_norm = b.replace(',', '.').replace(' ', '')
+        c_norm = c.replace(',', '.').replace(' ', '')
+        return f"{a_norm}*{b_norm}*{c_norm}"
     # Special: dual 'l' prefix without 'p', e.g., 'l 76 5 x l 38 x h 38 cm'
     m_prefix_l_l = re.search(
         r"\b[lL]\s*(\d+(?:[.,]?\d+)?)\s*[xX×*]\s*[lL]\s*(\d+(?:[.,]?\d+)?)\s*[xX×*]\s*[hH]\s*(\d+)\s*cm\b",
