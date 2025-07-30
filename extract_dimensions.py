@@ -56,6 +56,36 @@ def extract_dimensions(text):
     )
     if m_dim_noise:
         return f"{m_dim_noise.group(1)}*{m_dim_noise.group(2)}*{m_dim_noise.group(3)}"
+    # Special: prefix 'l X x l Y x h Z cm' allowing decimal parts separated by space or comma
+    m_prefix_double_any = re.search(
+        r"\b[lL]\s*(\d+(?:[.,\s]\d+)?)\s*[xX×*]\s*[lL]\s*(\d+(?:[.,\s]\d+)?)\s*[xX×*]\s*[hH]\s*(\d+)\s*cm\b",
+        original_text,
+        re.IGNORECASE
+    )
+    if m_prefix_double_any:
+        a, b, c = m_prefix_double_any.groups()
+        # normalize decimals
+        a_norm = a.replace(',', '.').replace(' ', '.')
+        b_norm = b.replace(',', '.').replace(' ', '.')
+        return f"{a_norm}*{b_norm}*{c}"
+    # Special: prefix pattern with two space-decimals for first and second dims: 'l 59 5 x p 23 3 x h 118 cm'
+    m_prefix_two_dec = re.search(
+        r"\b[lL]\s*(\d+)[\s,]+(\d+)\s*[xX×*]\s*[pP]\s*(\d+)[\s,]+(\d+)\s*[xX×*]\s*[hH]\s*(\d+)\s*cm\b",
+        original_text,
+        re.IGNORECASE
+    )
+    if m_prefix_two_dec:
+        i1_int, i1_frac, d2_int, d2_frac, h = m_prefix_two_dec.groups()
+        return f"{i1_int}.{i1_frac}*{d2_int}.{d2_frac}*{h}"
+    # Special: prefix pattern with fractional first dim and integer second dim both prefixed by 'l': 'l 76 5 x l 38 x h 38 cm'
+    m_prefix_double_l = re.search(
+        r"\b[lL]\s*(\d+)[\s,]+(\d+)\s*[xX×*]\s*[lL]\s*(\d+)\s*[xX×*]\s*[hH]\s*(\d+)\s*cm\b",
+        original_text,
+        re.IGNORECASE
+    )
+    if m_prefix_double_l:
+        i1_int, i1_frac, d2, h = m_prefix_double_l.groups()
+        return f"{i1_int}.{i1_frac}*{d2}*{h}"
     # Special: prefix pattern with space-decimal for 'l 115 x p 50 1 x h 203 cm'
     m_prefix_space_dec = re.search(
         r"\b[lL]\s*(\d+)\s*[xX×*]\s*[pP]\s*(\d+)[\s,]+(\d+)\s*[xX×*]\s*[hH]\s*(\d+)\s*cm\b",
@@ -65,6 +95,36 @@ def extract_dimensions(text):
     if m_prefix_space_dec:
         i1, d2_int, d2_frac, h = m_prefix_space_dec.groups()
         return f"{i1}*{d2_int}.{d2_frac}*{h}"
+    # Special: dual 'l' prefix without 'p', e.g., 'l 76 5 x l 38 x h 38 cm'
+    m_prefix_l_l = re.search(
+        r"\b[lL]\s*(\d+(?:[.,]?\d+)?)\s*[xX×*]\s*[lL]\s*(\d+(?:[.,]?\d+)?)\s*[xX×*]\s*[hH]\s*(\d+)\s*cm\b",
+        original_text,
+        re.IGNORECASE
+    )
+    if m_prefix_l_l:
+        g1, g2, g3 = m_prefix_l_l.groups()
+        g1n = g1.replace(',', '.').replace(' ', '')
+        g2n = g2.replace(',', '.').replace(' ', '')
+        return f"{g1n}*{g2n}*{g3}"
+    # Special: 3D space-decimal triplet with cm: integer and fractional parts separated by space for each dimension
+    m_space_dec3_cm = re.search(
+        r"\b(\d+)[\s,]+(\d+)[xX×*](\d+)[\s,]+(\d+)[xX×*](\d+)[\s,]+(\d+)\s*cm\b",
+        original_text,
+        re.IGNORECASE
+    )
+    if m_space_dec3_cm:
+        a, af, b, bf, c, cf = m_space_dec3_cm.groups()
+        return f"{a}.{af}*{b}.{bf}*{c}.{cf}"
+
+    # Special: 2D space-decimal pair with cm: integer and fractional parts separated by space
+    m_space_dec2_cm = re.search(
+        r"\b(\d+)[\s,]+(\d+)\s*[xX×*](\d+)[\s,]+(\d+)\s*cm\b",
+        original_text,
+        re.IGNORECASE
+    )
+    if m_space_dec2_cm:
+        a, af, b, bf = m_space_dec2_cm.groups()
+        return f"{a}.{af}*{b}.{bf}"
     # Handle 'dimensions' prefix with decimal triplet: e.g., 'dimensions 50 0 x 50 0 x 177 8 cm'
     # Disabled to allow fallback for dimensions prefix
     # m_dec3_prefix = re.search(
@@ -103,6 +163,16 @@ def extract_dimensions(text):
     if m_third_dec:
         a, b, c_int, c_frac = m_third_dec.groups()
         return f"{a}*{b}*{c_int}.{c_frac}"
+    # Special: 3D with decimal in first dimension without 'cm' or unit: '61 3 x 53 x 15'
+    m_dec3_no_unit = re.search(
+        r"\b(\d+)[\s,]+(\d+)\s*[xX×*]\s*(\d+)\s*[xX×*]\s*(\d+)\b",
+        original_text
+    )
+    if m_dec3_no_unit:
+        g = m_dec3_no_unit.groups()
+        # only treat as decimal if fractional part is single-digit
+        if len(g[1]) == 1:
+            return f"{g[0]}.{g[1]}*{g[2]}*{g[3]}"
     # Plain 3D integer without unit: '140x40x76' -> '140*40*76'
     # Only match when exactly three parts, not followed by another sep or 'cm'
     m_plain3 = re.search(
@@ -149,6 +219,14 @@ def extract_dimensions(text):
         if m_2d_cm:
             d1, d2 = m_2d_cm.groups()
             return f"{d1.replace(',', '.')}*{d2.replace(',', '.')}"
+    # Special: catch '12x12xh22cm' style (no spaces between x, h and number)
+    m_xxh = re.search(
+        r"\b(\d+)\s*[xX×*]\s*(\d+)\s*[xX×*]\s*[hH]\s*(\d+)\s*cm\b",
+        original_text,
+        re.IGNORECASE
+    )
+    if m_xxh:
+        return f"{m_xxh.group(1)}*{m_xxh.group(2)}*{m_xxh.group(3)}"
     # Simple numeric unit prefix for l x l x h (e.g., '94l x 38l x 95h'), support decimals with comma, dot or space
     m_simple_numunit = re.search(
         r"(\d+(?:[.,]\d+|\s+\d+)?)[lL]\s*[xX×*]\s*(\d+(?:[.,]\d+|\s+\d+)?)[lL]\s*[xX×*]\s*(\d+(?:[.,]\d+|\s+\d+)?)[hH]\b",
