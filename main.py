@@ -23,7 +23,7 @@ LIBELLE_COL = "Libellé produit"
 NATURE_COL = "Nature"
 
 # Configuration des données
-LIMIT_ROWS = 10000  # Limiter pour les tests (ex: 20000), None pour tout charger
+LIMIT_ROWS = None  # Limiter pour les tests (ex: 20000), None pour tout charger
 
 # Configuration du modèle
 BATCH_SIZE = 64
@@ -311,7 +311,7 @@ def save_pytorch_model(model, tfidf_configs, le_filtered, test_score, config, va
         
         # Sauvegarder les métadonnées
         metadata = {
-            'model_type': 'pytorch',
+            'model_type': 'pytorch_gpu' if DEVICE.type == 'cuda' else 'pytorch_cpu',
             'timestamp': timestamp,
             'test_score': test_score,
             'num_classes': config['num_classes'],
