@@ -7,6 +7,44 @@ def extract_dimensions(text):
     """
     text = str(text)
     original_text = text
+    # Early: handle 3D space-decimal triplet with 'cm' (e.g., '50 0 x 50 0 x 177 8 cm')
+    m_space_dec3_cm = re.search(
+        r"\b(\d+)[\s,]+(\d+)\s*[xX×*]\s*(\d+)[\s,]+(\d+)\s*[xX×*]\s*(\d+)[\s,]+(\d+)\s*cm\b",
+        original_text,
+        re.IGNORECASE
+    )
+    if m_space_dec3_cm:
+        a, b, c, d, e, f = m_space_dec3_cm.groups()
+        return f"{a}.{b}*{c}.{d}*{e}.{f}"
+    # Early: handle 3D space-decimal pair + integer (e.g., '25 5x25 5x55cm')
+    m_dec3d_cm = re.search(
+        r"\b(\d+)[\s,]+(\d+)[xX×*](\d+)[\s,]+(\d+)[xX×*](\d+)\s*cm\b",
+        original_text,
+        re.IGNORECASE
+    )
+    if m_dec3d_cm:
+        g = m_dec3d_cm.groups()
+        dim1 = f"{g[0]}.{g[1]}"
+        dim2 = f"{g[2]}.{g[3]}"
+        dim3 = g[4]
+        return f"{dim1}*{dim2}*{dim3}"
+    # Quick catch: two-part decimal with meter unit (e.g., '2 04 m', '4 07 m')
+    m_quick_m = re.search(r"\b(\d+)\s+(\d+)\s*m\b", original_text)
+    if m_quick_m:
+        return f"{m_quick_m.group(1)}.{m_quick_m.group(2)}"
+    # Explicit match for L<number>cm x P<number>cm x H<number>cm (with x separators)
+    m_lxpxh = re.search(r"\b[lL](\d+(?:[.,]\d+)?)cm\s*[xX×*]\s*[pP](\d+(?:[.,]\d+)?)cm\s*[xX×*]\s*[hH](\d+(?:[.,]\d+)?)cm\b", original_text)
+    if m_lxpxh:
+        d1, d2, d3 = m_lxpxh.groups()
+        return f"{d1.replace(',', '.')}*{d2.replace(',', '.')}*{d3.replace(',', '.')}"
+    # Specific: catch L..cm x P..cm x H..cm patterns early (e.g., 'l32cm x p30cm x h170cm')
+    m_specific_lph = re.search(
+        r"\b[lL](\d+(?:[.,]\d+)?)cm\s*[xX×*]\s*[pP](\d+(?:[.,]\d+)?)cm\s*[xX×*]\s*[hH](\d+(?:[.,]\d+)?)cm\b",
+        original_text
+    )
+    if m_specific_lph:
+        d1, d2, d3 = m_specific_lph.groups()
+        return f"{d1.replace(',', '.')}*{d2.replace(',', '.')}*{d3.replace(',', '.')}"
     # Count separators
     sep_count = len(re.findall(r"[xX×*]", original_text))
     # Handle 3D decimal triplet with meter suffix: '3 33x2 06x1 17m'
@@ -14,6 +52,15 @@ def extract_dimensions(text):
     if m_m3d:
         a, b, c, d, e, f = m_m3d.groups()
         return f"{a}.{b}*{c}.{d}*{e}.{f}"
+    # Special: robust match for L..cm x P..cm x H..cm patterns
+    m_lp_h = re.search(
+        r"[lL]\s*(\d+(?:[.,]\d+)?)\s*cm.*?[pP]\s*(\d+(?:[.,]\d+)?)\s*cm.*?[hH]\s*(\d+(?:[.,]\d+)?)\s*cm",
+        original_text
+    )
+    if m_lp_h:
+        d1, d2, d3 = m_lp_h.groups()
+        # normalize decimals
+        return f"{d1.replace(',', '.')}*{d2.replace(',', '.')}*{d3.replace(',', '.')}"
     # Handle 2D decimal with meter suffix: '0 45 x 2m'
     m_m2d = re.search(r"\b(\d+)\s+(\d+)\s*[xX×*]\s*(\d+)m\b", original_text)
     if m_m2d:
@@ -21,8 +68,8 @@ def extract_dimensions(text):
         return f"{a}.{b}*{c}"
     # Remove standalone meter suffixes to avoid treating as dimension: e.g., '3m'
     text = re.sub(r"\b(\d+(?:[.,]\d+)?)m\b", "", text)
-    # Special: headboard single dimension, matching accented or unaccented 'Tête de lit'
-    if re.search(r"\b(?:[tT] ?te|[tT]ête)\s+de\s+lit\b", original_text, re.IGNORECASE):
+    # Special: headboard single dimension, matching accented or unaccented 'Tête de lit' (only if no separators)
+    if sep_count == 0 and re.search(r"\b(?:[tT] ?te|[tT]ête)\s+de\s+lit\b", original_text, re.IGNORECASE):
         # look for number with unit
         m_head = re.search(r"\b(\d+(?:[.,]\d+)?)\s*(?:cm|mm|m)\b", original_text, re.IGNORECASE)
         if m_head:
@@ -31,9 +78,36 @@ def extract_dimensions(text):
         m_head2 = re.search(r"\b(\d+)\b", original_text)
         if m_head2:
             return m_head2.group(1)
-    # Quick exit: skip texts without 'x' separators unless special keywords
-    if sep_count == 0 and not re.search(r"\b(Surmatelas|prot[eéè]ge matelas|dimensions|Matelas)\b", original_text, re.IGNORECASE):
-        return None
+    # Special: prefix L<number>unit anywhere (e.g., 'L115 cm')
+    m_Lany = re.search(r"\b[Ll]\s*(\d+(?:[.,]\d+)?)\s*(?:cm|mm|m)\b", original_text)
+    if m_Lany:
+        return m_Lany.group(1).replace(',', '.')
+    # Special: two-part decimal before unit (e.g., '59 4cm', '2 04 m', or '4 07 m')
+    m_two_dec = re.search(r"\b(\d+)\s+(\d+)\s*(?:cm|m|mm)\b", original_text)
+    if m_two_dec and sep_count == 0:
+        int_part, frac_part = m_two_dec.groups()
+        # only accept 1 or 2 digit fractional parts
+        if 1 <= len(frac_part) <= 2:
+            return f"{int_part}.{frac_part}"
+    # Special: trailing single dimension with unit (skip two-part decimals)
+    if sep_count == 0 and not re.search(r"\b\d+\s+\d+\s*(?:m|cm|mm)\b", original_text):
+        m_trail = re.search(r"(\d+(?:[.,]\d+)?)\s*(?:cm|mm|m)\b(?=[^0-9]*$)", original_text)
+        if m_trail:
+            return m_trail.group(1).replace(',', '.')
+    # Quick exit for texts without 'x' separators
+    if sep_count == 0:
+        # Fallback: single dimension with unit (cm, mm, m) if exactly one occurrence
+        single_dims = re.findall(r"\b(\d+(?:[.,]\d+)?)\s*(?:cm|mm|m)\b", original_text)
+        if single_dims and len(single_dims) == 1:
+            # Normalize decimal separator
+            val = single_dims[0].replace(',', '.')
+            # Only accept if this is the only numeric unit in text
+            cleaned = re.sub(rf"\b{re.escape(val)}\s*(?:cm|mm|m)\b", "", original_text)
+            if not re.search(r"\d", cleaned):
+                return val
+        # Otherwise skip unless special keywords
+        if not re.search(r"\b(Surmatelas|prot[eéè]ge matelas|dimensions|Matelas)\b", original_text, re.IGNORECASE):
+            return None
     # Filter magnification patterns like '1x 2x 3x' to avoid false positives
     if re.search(r"\b\d+x\s+\d+x\s+\d+x\b", original_text):
         return None
@@ -242,6 +316,11 @@ def extract_dimensions(text):
         if m_2d_cm:
             d1, d2 = m_2d_cm.groups()
             return f"{d1.replace(',', '.')}*{d2.replace(',', '.')}"
+    # Fallback plain 2D integer dimensions without unit
+    if sep_count == 1:
+        m_plain2_fallback = re.search(r"\b(\d+(?:[.,]\d+)?)\s*[xX×]\s*(\d+(?:[.,]\d+)?)(?!\s*[xX×])", original_text)
+        if m_plain2_fallback:
+            return f"{m_plain2_fallback.group(1).replace(',', '.')}*{m_plain2_fallback.group(2).replace(',', '.')}"
     # Special: catch '12x12xh22cm' style (no spaces between x, h and number)
     m_xxh = re.search(
         r"\b(\d+)\s*[xX×*]\s*(\d+)\s*[xX×*]\s*[hH]\s*(\d+)\s*cm\b",
