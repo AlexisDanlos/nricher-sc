@@ -24,6 +24,9 @@ def extract_dimensions(text):
     # Quick exit: skip texts without 'x' separators unless special keywords
     if sep_count == 0 and not re.search(r"\b(Surmatelas|prot[eéè]ge matelas|dimensions|Matelas)\b", original_text, re.IGNORECASE):
         return None
+    # Filter magnification patterns like '1x 2x 3x' to avoid false positives
+    if re.search(r"\b\d+x\s+\d+x\s+\d+x\b", original_text):
+        return None
     # Special case: drap housse (sheet cover) dimensions
     if re.search(r"\bdrap\s+housse\b", original_text, re.IGNORECASE):
         m_dh = re.search(r"(\d+(?:[.,]\d+)?)\s*[xX×*]\s*(\d+(?:[.,]\d+)?)(?=\s*(?:\d+(?:[.,]\d+)?\s*)?cm\b)", original_text)
@@ -31,6 +34,20 @@ def extract_dimensions(text):
             d1 = m_dh.group(1).replace(',', '.')
             d2 = m_dh.group(2).replace(',', '.')
             return f"{d1}*{d2}"
+    # Special case: housse de couette (duvet cover) dimensions, ignore thickness
+    if re.search(r"\bhousse\s+de\s+couette\b", original_text, re.IGNORECASE):
+        # find all two-part dimensions and pick the first reasonable pair
+        dims = re.findall(r"(\d+(?:[.,]\d+)?)\s*[xX×*]\s*(\d+(?:[.,]\d+)?)", original_text)
+        for d1, d2 in dims:
+            d1f = d1.replace(',', '.')
+            d2f = d2.replace(',', '.')
+            try:
+                # choose dimensions likely of a duvet cover
+                if float(d1f) >= 50 and float(d2f) >= 50:
+                    return f"{d1f}*{d2f}"
+            except:
+                # fallback for non-numeric matches
+                return f"{d1f}*{d2f}"
     # Handle noisy 'dim ' prefix with unit letters and extra decimal: 'dim 94l x 38l x 95 105h'
     m_dim_noise = re.search(
         r"\bdim\s+(\d+)[lL]\s*[xX×*]\s*(\d+)[lL]\s*[xX×*]\s*(\d+)\s+\d+[hH]",
@@ -39,6 +56,15 @@ def extract_dimensions(text):
     )
     if m_dim_noise:
         return f"{m_dim_noise.group(1)}*{m_dim_noise.group(2)}*{m_dim_noise.group(3)}"
+    # Special: prefix pattern with space-decimal for 'l 115 x p 50 1 x h 203 cm'
+    m_prefix_space_dec = re.search(
+        r"\b[lL]\s*(\d+)\s*[xX×*]\s*[pP]\s*(\d+)[\s,]+(\d+)\s*[xX×*]\s*[hH]\s*(\d+)\s*cm\b",
+        original_text,
+        re.IGNORECASE
+    )
+    if m_prefix_space_dec:
+        i1, d2_int, d2_frac, h = m_prefix_space_dec.groups()
+        return f"{i1}*{d2_int}.{d2_frac}*{h}"
     # Handle 'dimensions' prefix with decimal triplet: e.g., 'dimensions 50 0 x 50 0 x 177 8 cm'
     # Disabled to allow fallback for dimensions prefix
     # m_dec3_prefix = re.search(
@@ -68,6 +94,23 @@ def extract_dimensions(text):
                 return f"{a}*{b}.{c}*{d}"
         except:
             pass
+    # Handle 3D integer + fractional third dimension with 'c' or 'cm': '92 x 30 x 7 5 cm' or '84 5 c'
+    m_third_dec = re.search(
+        r"\b(\d+)\s*[xX×*]\s*(\d+)\s*[xX×*]\s*(\d+)[\s,]+(\d+)\s*(?:c|cm)\b",
+        original_text,
+        re.IGNORECASE
+    )
+    if m_third_dec:
+        a, b, c_int, c_frac = m_third_dec.groups()
+        return f"{a}*{b}*{c_int}.{c_frac}"
+    # Plain 3D integer without unit: '140x40x76' -> '140*40*76'
+    # Only match when exactly three parts, not followed by another sep or 'cm'
+    m_plain3 = re.search(
+        r"\b(\d+)\s*[xX×*]\s*(\d+)\s*[xX×*]\s*(\d+)\b(?!\s*x|\s*cm) ",
+        original_text
+    )
+    if m_plain3:
+        return "*".join(m_plain3.groups())
     # Special: 3D decimal on first dimension only: '77 5 x 160 x 48 cm'
     if sep_count >= 2:
         m_first_dec = re.search(
@@ -349,10 +392,6 @@ def extract_dimensions(text):
     if m3_last_comma:
         a, b, c = m3_last_comma.groups()
         return f"{a.replace(',','.')}*{b.replace(',','.')}*{c.replace(',','.') }"
-    # Special: plain 3D integer without unit: '140x40x76' -> '140*40*76'
-    m_plain3_no_unit = re.search(r"\b(\d{2,3})\s*[xX×*]\s*(\d{2,3})\s*[xX×*]\s*(\d{2,3})\b", text)
-    if m_plain3_no_unit:
-        return "*".join(m_plain3_no_unit.groups())
     # Special: 2D integer dims followed by height unit: '160 x 200 ... h22 cm' -> '160*200'
     m_2d_h_cm = re.search(
         r"\b(\d+(?:[.,]\d+)?)\s*[xX×*]\s*(\d+(?:[.,]\d+)?).*?h\s*\d+(?:[.,]\d+)?\s*cm\b",
