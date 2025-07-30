@@ -13,11 +13,10 @@ import pickle
 import os
 from datetime import datetime
 
-# Import des modules locaux
 from model_utils import TextClassifierNet, print_progress
 from data_processing import load_excel_data, create_tfidf_vectorizers, prepare_features, prepare_labels
 
-# === CONFIGURATION ===
+# CONFIG
 FILE_PATH = "ecommerce_corrected_20250729_184443.xlsx"
 LIBELLE_COL = "Libellé produit"
 NATURE_COL = "Nature"
@@ -30,14 +29,13 @@ BATCH_SIZE = 64
 EPOCHS = 100
 LEARNING_RATE = 0.001
 
-# Configuration CUDA - PyTorch peut utiliser CPU ou GPU automatiquement
 if torch.cuda.is_available():
     DEVICE = torch.device("cuda")
-    print(f"🚀 GPU activé: {torch.cuda.get_device_name(0)}")
-    print(f"   Mémoire disponible: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+    print(f"GPU activé: {torch.cuda.get_device_name(0)}")
+    print(f"Mémoire disponible: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
 else:
     DEVICE = torch.device("cpu")
-    print("🖥️  Mode CPU activé (PyTorch)")
+    print("Mode CPU activé (PyTorch)")
 
 def main():
     """Fonction principale d'entraînement."""
@@ -64,12 +62,12 @@ def main():
     df_filtered = df_filtered.reset_index(drop=True)
     
     if removed_count > 0:
-        print(f"⚠️  {removed_count} produits supprimés (catégories rares avec <{min_samples_per_category} exemples)")
-        print(f"📊 Dataset d'entraînement: {len(df_filtered)} produits, {len(valid_categories)} catégories")
-    
-    print(f"📊 Catégories avec ≥{min_samples_per_category} échantillons: {len(valid_categories)}")
-    print(f"🎯 Échantillons utilisés: {len(df_filtered)} / {len(df)}")
-    print(f"📈 Répartition: min={category_counts[valid_categories].min()}, max={category_counts[valid_categories].max()}, moyenne={category_counts[valid_categories].mean():.1f}")
+        print(f"{removed_count} produits supprimés (catégories rares avec <{min_samples_per_category} exemples)")
+        print(f"Dataset d'entraînement: {len(df_filtered)} produits, {len(valid_categories)} catégories")
+
+    print(f"Catégories avec ≥{min_samples_per_category} échantillons: {len(valid_categories)}")
+    print(f"Échantillons utilisés: {len(df_filtered)} / {len(df)}")
+    print(f"Répartition: min={category_counts[valid_categories].min()}, max={category_counts[valid_categories].max()}, moyenne={category_counts[valid_categories].mean():.1f}")
     
     # === 3. CRÉATION DES FEATURES ===
     print_progress(3, "Création des features TF-IDF")
@@ -85,7 +83,7 @@ def main():
     unique, counts = np.unique(y, return_counts=True)
     min_class_count = counts.min()
     if min_class_count < 2:
-        print(f"⚠️  Stratification désactivée: certaines classes ont <2 échantillons (min={min_class_count})")
+        print(f"Stratification désactivée: certaines classes ont <2 échantillons (min={min_class_count})")
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.2, random_state=42
         )
@@ -94,16 +92,16 @@ def main():
             X, y, test_size=0.2, random_state=42, stratify=y
         )
     
-    print(f"📊 Train: {X_train.shape[0]} échantillons")
-    print(f"📊 Test: {X_test.shape[0]} échantillons")
-    
+    print(f"Train: {X_train.shape[0]} échantillons")
+    print(f"Test: {X_test.shape[0]} échantillons")
+
     # === 5. ENTRAÎNEMENT DU MODÈLE ===
     print_progress(5, "Entraînement du modèle PyTorch")
     
     test_score = train_pytorch_model(X_train, X_test, y_train, y_test, tfidf_configs, le_filtered, valid_categories)
     
-    print(f"🎯 Score final: {test_score:.4f}")
-    print("🎉 Entraînement terminé avec succès!")
+    print(f"Score final: {test_score:.4f}")
+    print("Entraînement terminé avec succès!")
 
 def train_pytorch_model(X_train, X_test, y_train, y_test, tfidf_configs, le_filtered, valid_categories):
     """Entraîne le modèle PyTorch - Compatible CPU/GPU."""
@@ -114,13 +112,13 @@ def train_pytorch_model(X_train, X_test, y_train, y_test, tfidf_configs, le_filt
     # Adapter l'architecture selon le device et la taille des données
     if DEVICE.type == 'cuda':
         hidden_size = min(1024, input_size // 4)  # Architecture GPU
-        batch_size = 64
-        print(f"🔥 Entraînement modèle PyTorch sur GPU avec {len(le_filtered.classes_)} catégories...")
+        batch_size = BATCH_SIZE
+        print(f"Entraînement modèle PyTorch sur GPU avec {len(le_filtered.classes_)} catégories...")
     else:
         hidden_size = min(512, input_size // 6)   # Architecture CPU plus légère
-        batch_size = 32
-        print(f"🖥️  Entraînement modèle PyTorch sur CPU avec {len(le_filtered.classes_)} catégories...")
-        
+        batch_size = BATCH_SIZE // 2
+        print(f"Entraînement modèle PyTorch sur CPU avec {len(le_filtered.classes_)} catégories...")
+
     num_classes = len(le_filtered.classes_)
     
     config = {
@@ -134,9 +132,9 @@ def train_pytorch_model(X_train, X_test, y_train, y_test, tfidf_configs, le_filt
         "dropout_rate": 0.4
     }
     
-    print(f"📊 Architecture: {input_size} → {hidden_size} → {hidden_size//2} → {hidden_size//4} → {num_classes}")
-    print(f"⚙️  Paramètres: Batch={batch_size}, LR={LEARNING_RATE}, Dropout=0.4, Label Smoothing=0.1")
-    print(f"🎯 Device: {DEVICE}, Validation tous les 5 époques")
+    print(f"Architecture: {input_size} → {hidden_size} → {hidden_size//2} → {hidden_size//4} → {num_classes}")
+    print(f"Paramètres: Batch={batch_size}, LR={LEARNING_RATE}, Dropout=0.4, Label Smoothing=0.1")
+    print(f"Device: {DEVICE}, Validation tous les 5 époques")
     print("-" * 60)
     
     model = TextClassifierNet(
@@ -199,10 +197,10 @@ def train_pytorch_model(X_train, X_test, y_train, y_test, tfidf_configs, le_filt
             batch_count += 1
             
             # Affichage du progrès par batch pour les premières époques ou époques critiques
-            if (epoch < 10 or epoch % 20 == 0) and batch_idx % (len(train_loader) // 4) == 0:
-                progress_pct = (batch_idx + 1) / len(train_loader) * 100
-                current_avg_loss = total_loss / (batch_idx + 1)
-                print(f"     Batch {batch_idx+1:3d}/{len(train_loader)} ({progress_pct:5.1f}%) - Loss: {current_avg_loss:.4f}")
+            # if (epoch < 10 or epoch % 20 == 0) and batch_idx % (len(train_loader) // 4) == 0:
+            #     progress_pct = (batch_idx + 1) / len(train_loader) * 100
+            #     current_avg_loss = total_loss / (batch_idx + 1)
+            #     print(f"     Batch {batch_idx+1:3d}/{len(train_loader)} ({progress_pct:5.1f}%) - Loss: {current_avg_loss:.4f}")
         
         scheduler.step()
         
@@ -219,20 +217,18 @@ def train_pytorch_model(X_train, X_test, y_train, y_test, tfidf_configs, le_filt
                     patience_counter = 0
                     # Sauvegarder le meilleur modèle
                     best_model_state = model.state_dict().copy()
-                    improvement_indicator = "⬆️"
                 else:
                     patience_counter += 1
-                    improvement_indicator = "➡️"
                 
                 # Calcul du learning rate actuel
                 current_lr = optimizer.param_groups[0]['lr']
                 
                 # Affichage détaillé du progrès
                 avg_loss = total_loss / batch_count
-                print(f"   {improvement_indicator} Époque {epoch+1:3d}: Loss={avg_loss:.4f}, Acc={accuracy:.3f}, Best={best_accuracy:.3f}, LR={current_lr:.6f}, Patience={patience_counter}")
+                print(f"   Époque {epoch+1:3d}: Loss={avg_loss:.4f}, Acc={accuracy:.3f}, Best={best_accuracy:.3f}, LR={current_lr:.6f}, Patience={patience_counter}")
                 
                 if patience_counter >= 3 and epoch >= 45:  # Early stopping plus patient
-                    print(f"   🛑 Early stopping à l'époque {epoch+1} (patience épuisée)")
+                    print(f"   Early stopping à l'époque {epoch+1} (patience épuisée)")
                     break
                     
             model.train()
@@ -240,12 +236,12 @@ def train_pytorch_model(X_train, X_test, y_train, y_test, tfidf_configs, le_filt
             # Affichage rapide de la loss pour les autres époques
             avg_loss = total_loss / batch_count
             current_lr = optimizer.param_groups[0]['lr']
-            print(f"   📈 Époque {epoch+1:3d}: Loss={avg_loss:.4f}, LR={current_lr:.6f}")
+            print(f"   Époque {epoch+1:3d}: Loss={avg_loss:.4f}, LR={current_lr:.6f}")
     
     # Restaurer le meilleur modèle
     if best_model_state:
         model.load_state_dict(best_model_state)
-    print(f"   ✅ Modèle terminé - Meilleure précision: {best_accuracy:.3f}")
+    print(f"   Modèle terminé - Meilleure précision: {best_accuracy:.3f}")
     
     # Wrapper simplifié pour un seul modèle
     class SingleModelWrapper:
@@ -324,14 +320,14 @@ def save_pytorch_model(model, tfidf_configs, le_filtered, test_score, config, va
         with open(metadata_filename, 'wb') as f:
             pickle.dump(metadata, f)
         
-        print(f"✅ Modèle PyTorch sauvegardé:")
-        print(f"   📁 Modèle: {model_filename}")
-        print(f"   📁 TF-IDF: {tfidf_filename}")
-        print(f"   📁 Encodeur: {label_encoder_filename}")
-        print(f"   📁 Métadonnées: {metadata_filename}")
-        
+        print(f"Modèle PyTorch sauvegardé:")
+        print(f"   Modèle: {model_filename}")
+        print(f"   TF-IDF: {tfidf_filename}")
+        print(f"   Encodeur: {label_encoder_filename}")
+        print(f"   Métadonnées: {metadata_filename}")
+
     except Exception as e:
-        print(f"❌ Erreur lors de la sauvegarde: {e}")
+        print(f"Erreur lors de la sauvegarde: {e}")
 
 if __name__ == "__main__":
     main()
