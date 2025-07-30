@@ -104,8 +104,265 @@ def extract_dimensions(text):
     Retourne les dimensions sous format standardisé ou None si aucune trouvée.
     """
     text = str(text)
+    # Special case: Surmatelas dimensions before 'mousse'
+    if re.search(r'\bSurmatelas\b', text, re.IGNORECASE):
+        m_sur = re.search(r'(\d+(?:[.,]\d+)?)\s*[xX×*]\s*(\d+(?:[.,]\d+)?)(?=\s+mousse\b)', text, re.IGNORECASE)
+        if m_sur:
+            dim1 = m_sur.group(1).replace(',', '.')
+            dim2 = m_sur.group(2).replace(',', '.')
+            return f"{dim1}*{dim2}"
+    # Special case: mattress protector ('protège matelas') dims
+    # Special case: mattress protector ('protège matelas') dims
+    # Match both acute and grave accent on 'e'
+    if re.search(r'\bprot[eéè]ge matelas\b', text, re.IGNORECASE):
+        m_pm = re.search(r'(\d+(?:[.,]\d+)?)\s*[xX×*]\s*(\d+(?:[.,]\d+)?)', text)
+        if m_pm:
+            d1 = m_pm.group(1).replace(',', '.')
+            d2 = m_pm.group(2).replace(',', '.')
+            return f"{d1}*{d2}"
+    # Remove thickness mentions (e.g., '22cm épaisseur') to avoid misinterpreting as decimal dimensions
+    if 'épaisseur' in text.lower():
+        text = re.sub(r"\b\d+(?:[.,]\d+)?\s*cm\b", "", text, flags=re.IGNORECASE)
+    # Special: prefix pattern with any decimal separator (comma or dot) for cm after each: both 'l 76,5 cm x p 29,5 cm x h 70 cm' and 'l 76.5 cm x p 29.5 cm x h 70 cm'
+    m_prefix_cm_any = re.search(
+        r"\b[lL]\s*([0-9]+(?:[.,]\d+)?)\s*cm\s*[xX×*]\s*[pP]\s*([0-9]+(?:[.,]\d+)?)\s*cm\s*[xX×*]\s*[hH]\s*([0-9]+(?:[.,]\d+)?)\s*cm\b",
+        text,
+        re.IGNORECASE
+    )
+    if m_prefix_cm_any:
+        parts = [g.replace(',', '.') for g in m_prefix_cm_any.groups()]
+        return "*".join(parts)
+    # Special: prefix pattern with cm after each: 'l 76 5 cm x p 29 5 cm x h 70 cm' -> '76.5*29.5*70'
+    m_generic_prefix = re.search(
+        r"\b[lL]\s*(\d+)\s+(\d+)\s*cm.*?p\s*(\d+)\s+(\d+)\s*cm.*?h\s*(\d+)\s*cm\b",
+        text,
+        re.IGNORECASE
+    )
+    if m_generic_prefix:
+        i1, f1, i2, f2, i3 = m_generic_prefix.groups()
+        return f"{i1}.{f1}*{i2}.{f2}*{i3}"
+    # Top priority: prefix pattern decimals 'l 76.5 cm x p 29.5 cm x h 70 cm' -> '76.5*29.5*70'
+    m_prefix3_cm_dec = re.search(
+        r"\b[lL]\s*([0-9]+(?:[.,]\d+)?)\s*cm\s*[xX×*]\s*[pP]\s*([0-9]+(?:[.,]\d+)?)\s*cm\s*[xX×*]\s*[hH]\s*([0-9]+(?:[.,]\d+)?)\s*cm\b",
+        text,
+        re.IGNORECASE
+    )
+    if m_prefix3_cm_dec:
+        g1, g2, g3 = m_prefix3_cm_dec.groups()
+        return f"{g1.replace(',','.')}*{g2.replace(',','.')}*{g3.replace(',','.') }"
+    # Special: prefix pattern 'l dim1 x dim2 x h dim3 cm' with comma, dot, or split decimals
+    m_prefix2_xh = re.search(
+        r"\b[lL]\s*([0-9]+(?:[.,]\d+)?(?:\s+\d+)?)\s*[xX×*]\s*([0-9]+(?:[.,]\d+)?(?:\s+\d+)?)\s*[xX×*]\s*[hH]\s*([0-9]+(?:[.,]\d+)?(?:\s+\d+)?)\s*cm\b",
+        text,
+        re.IGNORECASE
+    )
+    if m_prefix2_xh:
+        parts = [re.sub(r"[\s,]+", ".", g) for g in m_prefix2_xh.groups()]
+        return "*".join(parts)
+    # Top priority: 3D integer with height prefix and no unit: '7 x 70 x h150' -> '7*70*150'
+    m_h3_int = re.search(r"\b(\d+)\s*[xX×*]\s*(\d+)\s*[xX×*]\s*[hH](\d+)\b", text)
+    if m_h3_int:
+        a, b, c = m_h3_int.groups()
+        return f"{a}*{b}*{c}"
+    # Special: prefix pattern with 'cm' after each dimension: 'l 76 5 cm x p 29 5 cm x h 70 cm' -> '76.5*29.5*70'
+    m_prefix3_cm = re.search(
+        r"\b[lL]\s+(\d+)\s+(\d+)\s*cm\s*[xX×*]\s*[pP]\s+(\d+)\s+(\d+)\s*cm\s*[xX×*]\s*[hH]\s*(\d+)\s*cm\b",
+        text,
+        re.IGNORECASE
+    )
+    if m_prefix3_cm:
+        i1, f1, i2, f2, i3 = m_prefix3_cm.groups()
+        return f"{i1}.{f1}*{i2}.{f2}*{i3}"
+    # Top priority: 3D decimal last dimension: '92 x 30 x 88 5 cm', '94 x 50 x 63 5 cm'
+    m3_last = re.search(r"\b(\d+(?:[.,]\d+)?)\s*[xX×*]\s*(\d+(?:[.,]\d+)?)\s*[xX×*]\s*(\d+)\s+(\d+)\s*cm\b", text)
+    if m3_last:
+        g0, g1, g2, g3 = m3_last.groups()
+        return f"{g0.replace(',','.')}*{g1.replace(',','.')}*{g2}.{g3}"
+    # Special: 3D decimals with zero prefix: '50 0 x 50 0 x 177 8 cm'
+    m_zero3d = re.search(r"\b(\d{2,})\s+0\s*[xX×*]\s*(\d+)\s+0\s*[xX×*]\s*(\d+)\s+(\d+)\s*cm\b", text)
+    if m_zero3d:
+        a, b, c, d = m_zero3d.groups()
+        return f"{a}.0*{b}.0*{c}.{d}"
+    # Special: 3D decimal with 'c' suffix: '100 x 35 x 84 5 c' -> '100*35*84.5'
+    m_3d_c = re.search(r"\b(\d+)\s*[xX×*]\s*(\d+)\s*[xX×*]\s*(\d+)\s+(\d+)\s*c\b", text)
+    if m_3d_c:
+        g = m_3d_c.groups()
+        return f"{g[0]}*{g[1]}*{g[2]}.{g[3]}"
+    # Special: 3D with double decimals: '120 x 40 3 x 34 7 cm' -> '120*40.3*34.7'
+    m_3d_double = re.search(r"\b(\d+)\s*[xX×*]\s*(\d+)\s+(\d+)\s*[xX×*]\s*(\d+)\s+(\d+)\s*cm\b", text)
+    if m_3d_double:
+        a, b, c, d, e = m_3d_double.groups()
+        return f"{a}*{b}.{c}*{d}.{e}"
+    # Special: 3D decimal on first dimension only: '77 5 x 160 x 48 cm' -> '77.5*160*48'
+    m_first_dec = re.search(r"\b(\d+)\s+(\d+)\s*[xX×*]\s*(\d+)\s*[xX×*]\s*(\d+)\s*cm\b", text)
+    if m_first_dec:
+        g = m_first_dec.groups()
+        return f"{g[0]}.{g[1]}*{g[2]}*{g[3]}"
+    # Special: 3D decimal last dimension with comma: '94 x 50 x 63,5 cm' -> '94*50*63.5'
+    m3_last_comma = re.search(
+        r"\b(\d+(?:[.,]\d+)?)\s*[xX×*]\s*(\d+(?:[.,]\d+)?)\s*[xX×*]\s*(\d+(?:[.,]\d+))\s*cm\b",
+        text
+    )
+    if m3_last_comma:
+        a, b, c = m3_last_comma.groups()
+        return f"{a.replace(',','.')}*{b.replace(',','.')}*{c.replace(',','.') }"
+    # Special: plain 3D integer without unit: '140x40x76' -> '140*40*76'
+    m_plain3_no_unit = re.search(r"\b(\d{2,3})\s*[xX×*]\s*(\d{2,3})\s*[xX×*]\s*(\d{2,3})\b", text)
+    if m_plain3_no_unit:
+        return "*".join(m_plain3_no_unit.groups())
+    # Special: 2D integer dims followed by height unit: '160 x 200 ... h22 cm' -> '160*200'
+    m_2d_h_cm = re.search(
+        r"\b(\d+(?:[.,]\d+)?)\s*[xX×*]\s*(\d+(?:[.,]\d+)?).*?h\s*\d+(?:[.,]\d+)?\s*cm\b",
+        text,
+        re.IGNORECASE
+    )
+    if m_2d_h_cm:
+        d1, d2 = m_2d_h_cm.groups()
+        return f"{d1.replace(',','.')}*{d2.replace(',','.') }"
+    # Special: 2D comma meter: '1,5x5m' -> '1.5*5'
+    m_2d_comma_m = re.search(r"\b(\d+(?:[.,]\d+))x(\d+(?:[.,]\d+)?)m\b", text, re.IGNORECASE)
+    if m_2d_comma_m:
+        a, b = m_2d_comma_m.groups()
+        return f"{a.replace(',','.')}*{b.replace(',','.')}"
+    # Special: prefix pattern 'l 80 x 39 5 x h 75cm' -> '80*39.5*75'
+    m_l_pref = re.search(r"\bl\s*(\d+)\s*[xX×*]\s*(\d+)\s+(\d+)\s*[xX×*]\s*[hH]\s*(\d+)\s*cm\b", text, re.IGNORECASE)
+    if m_l_pref:
+        i1, i2, f2, h = m_l_pref.groups()
+        return f"{i1}*{i2}.{f2}*{h}"
+    # Special: 3D with double decimals: '120 x 40 3 x 34 7 cm' -> '120*40.3*34.7'
+    m_3d_double = re.search(
+        r"\b(\d+)\s*[xX×*]\s*(\d+)\s+(\d+)\s*[xX×*]\s*(\d+)\s+(\d+)\s*cm\b",
+        text
+    )
+    if m_3d_double:
+        a, b, c, d, e = m_3d_double.groups()
+        return f"{a}*{b}.{c}*{d}.{e}"
+    # Special: 3D decimal on first dimension only: '77 5 x 160 x 48 cm' -> '77.5*160*48'
+    m_first_dec = re.search(
+        r"\b(\d+)\s+(\d+)\s*[xX×*]\s*(\d+)\s*[xX×*]\s*(\d+)\s*cm\b",
+        text
+    )
+    if m_first_dec:
+        g = m_first_dec.groups()
+        return f"{g[0]}.{g[1]}*{g[2]}*{g[3]}"
+    # Special: 3D decimal in last dimension: '92 x 30 x 88 5 cm' or '94 x 50 x 63 5 cm'
+    m_3d_last = re.search(
+        r"\b(\d+(?:[.,]\d+)?)\s*[xX×*]\s*(\d+(?:[.,]\d+)?)\s*[xX×*]\s*(\d+)\s+(\d+)\s*cm\b",
+        text
+    )
+    if m_3d_last:
+        d1, d2, i3, f3 = m_3d_last.groups()
+        return f"{d1.replace(',','.')}*{d2.replace(',','.')}*{i3}.{f3}"
+    # Special: prefix pattern decimals supporting missing 'x': 'l 122 6 x p 34 2 h 88 1 cm'
+    m_prefix3_dec = re.search(
+        r"\b[lL]\s+(\d+)\s+(\d+)(?:\s*[xX×*]\s*|\s+)[pP]\s+(\d+)\s+(\d+)(?:\s*[xX×*]\s*|\s+)[hH]\s+(\d+)\s+(\d+)\s*cm\b",
+        text,
+        re.IGNORECASE
+    )
+    if m_prefix3_dec:
+        i1, f1, i2, f2, i3, f3 = m_prefix3_dec.groups()
+        return f"{i1}.{f1}*{i2}.{f2}*{i3}.{f3}"
+    # Special: l/p/h style 3D cm: 'l 132 x p 1 x h 81 cm' -> '132*1*81'
+    m_lph = re.search(r"\b[lL]\s*(\d+(?:[.,]\d+)?)\s*[xX×*]\s*[pP]\s*(\d+(?:[.,]\d+)?)\s*[xX×*]\s*[hH]\s*(\d+(?:[.,]\d+)?)\s*cm\b", text, re.IGNORECASE)
+    if m_lph:
+        parts = [p.replace(',', '.') for p in m_lph.groups()]
+        return "*".join(parts)
+    # Special: h/l/p style 3D cm: 'h 170 x l 120 x p 2 cm' -> '170*120*2'
+    m_hlp = re.search(r"\b[hH]\s*(\d+(?:[.,]\d+)?)\s*[xX×*]\s*[lL]\s*(\d+(?:[.,]\d+)?)\s*[xX×*]\s*[pP]\s*(\d+(?:[.,]\d+)?)\s*cm\b", text, re.IGNORECASE)
+    if m_hlp:
+        parts = [p.replace(',', '.') for p in m_hlp.groups()]
+        return "*".join(parts)
+    # Special: 4-part decimal cm '50 7x46x1x142 5cm' -> '50.7*46*142.5'
+    m_4dec_cm = re.search(
+        r"\b(\d+)\s+(\d+)[xX×*](\d+)[xX×*](\d+)[xX×*](\d+)\s+(\d+)cm\b",
+        text
+    )
+    if m_4dec_cm:
+        a, b, c, d, e, f = m_4dec_cm.groups()
+        # drop fourth part if small stray (<10)
+        try:
+            if float(d) < 10:
+                return f"{a}.{b}*{c}*{e}.{f}"
+        except:
+            pass
+    # Special: stray leading code then decimal 3-part, only if stray code >100: '102 164 x 48 5 x 198 cm' -> '164*48.5*198'
+    m_stray3 = re.search(
+        r"\b(\d+)\s+(\d+)\s*[xX×*]\s*(\d+)\s+(\d+)\s*[xX×*]\s*(\d+)\s*cm\b",
+        text
+    )
+    if m_stray3:
+        s, a, b, c, d = m_stray3.groups()
+        try:
+            if float(s) > 100:
+                return f"{a}*{b}.{c}*{d}"
+        except:
+            pass
+    # Special: 2D decimal meters '0 45 x 2m' -> '0.45*2'
+    m_2d_dec_m = re.search(r"\b(\d+)\s+(\d+)\s*[xX×*]\s*(\d+(?:[.,]\d+)?)m\b", text)
+    if m_2d_dec_m:
+        g = m_2d_dec_m.groups()
+        return f"{g[0]}.{g[1]}*{g[2].replace(',', '.')}"
+    # Special: prefix pattern 'l 80 x 39 5 x h 75cm' -> '80*39.5*75'
+    m_prefix3 = re.search(r"\bl\s*(\d+(?:[.,]\d+)?)\s*[xX×*]\s*(\d+)\s+(\d+)\s*[xX×*]\s*[hH]\s*(\d+(?:[.,]\d+)?)cm\b", text)
+    if m_prefix3:
+        g = m_prefix3.groups()
+        dim1 = g[0].replace(',', '.')
+        dim2 = f"{g[1]}.{g[2]}"
+        dim3 = g[3].replace(',', '.')
+        return f"{dim1}*{dim2}*{dim3}"
+    # Special: 3D decimal with single 'c' suffix: '100 x 35 x 84 5 c' -> '100*35*84.5'
+    m_3d_dec_c = re.search(r"\b(\d+)\s*[xX×*]\s*(\d+)\s*[xX×*]\s*(\d+)\s+(\d+)\s*c\b", text)
+    if m_3d_dec_c:
+        g = m_3d_dec_c.groups()
+        return f"{g[0]}*{g[1]}*{g[2]}.{g[3]}"
+    # Quick 3D integer cm: catch '110 x 40 x 45 cm' before other regex
+    m_3int_cm = re.search(r"\b(\d{2,3})\s*[xX×*]\s*(\d{1,4})\s*[xX×*]\s*(\d{1,4})\s*cm\b", text, re.IGNORECASE)
+    if m_3int_cm:
+        g = m_3int_cm.groups()
+        return f"{g[0]}*{g[1]}*{g[2]}"
     # Simplify cases like '95 105h' to '95h' (ignore secondary number before 'h')
     text = re.sub(r"(\d+)\s+\d+h", r"\1h", text)
+    # Drop first small multiplier in 3D: '2 x 60 x 160 cm' -> '60*160'
+    m_drop3 = re.search(r"\b(\d{1,2})\s*[xX×*]\s*(\d+(?:[.,]\d+)?)\s*[xX×*]\s*(\d+(?:[.,]\d+)?)\s*cm\b", text)
+    if m_drop3:
+        g = m_drop3.groups()
+        try:
+            if float(g[0]) < 10 and float(g[1]) >= 10 and float(g[2]) >= 10:
+                return f"{g[1].replace(',','.')}*{g[2].replace(',','.') }"
+        except:
+            pass
+    # Strict integer 3D cm: '110 x 40 x 45 cm' -> '110*40*45'
+    m_int3d_cm = re.search(r"\b(\d{2,3})\s*[xX×*]\s*(\d{1,4})\s*[xX×*]\s*(\d{1,4})\s*cm\b", text)
+    if m_int3d_cm:
+        g = m_int3d_cm.groups()
+        return f"{g[0]}*{g[1]}*{g[2]}"
+    # Standard 3D cm: '110 x 40 x 45 cm' -> '110*40*45'
+    m_std3d_cm = re.search(r"\b(\d+(?:[.,]\d+)?)\s*[xX×*]\s*(\d+(?:[.,]\d+)?)\s*[xX×*]\s*(\d+(?:[.,]\d+)?)\s*cm\b", text)
+    if m_std3d_cm:
+        g = m_std3d_cm.groups()
+        return f"{g[0].replace(',','.')}*{g[1].replace(',','.')}*{g[2].replace(',','.') }"
+    # Simple 2D cm: '200 x 200cm' or '200x200 cm' -> '200*200'
+    m_2d_cm = re.search(r"\b(\d+(?:[.,]\d+)?)\s*[xX×*]\s*(\d+(?:[.,]\d+)?)(?:\s*cm)\b", text)
+    if m_2d_cm:
+        g = m_2d_cm.groups()
+        try:
+            if float(g[0].replace(',','.')) >= 10 and float(g[1].replace(',','.')) >= 10:
+                return f"{g[0].replace(',','.')}*{g[1].replace(',','.')}"
+        except:
+            pass
+    # Special: 3D decimal cm: '25 5x25 5x55cm' or '92 1x29 5x123cm' -> '25.5*25.5*55'/'92.1*29.5*123'
+    m_dec3d_cm = re.search(r"\b(\d+)\s+(\d+)[xX×*](\d+)\s+(\d+)[xX×*](\d+)\s*cm\b", text)
+    if m_dec3d_cm:
+        g = m_dec3d_cm.groups()
+        dim1 = f"{g[0]}.{g[1]}"
+        dim2 = f"{g[2]}.{g[3]}"
+        dim3 = g[4]
+        return f"{dim1}*{dim2}*{dim3}"
+    # Simple 3D cm: '110 x 40 x 45 cm' -> '110*40*45'
+    m_simple3d_cm = re.search(r"\b(\d+(?:[.,]\d+)?)\s*[xX×*]\s*(\d+(?:[.,]\d+)?)\s*[xX×*]\s*(\d+(?:[.,]\d+)?)\s*cm\b", text)
+    if m_simple3d_cm:
+        g = m_simple3d_cm.groups()
+        return f"{g[0].replace(',','.')}*{g[1].replace(',','.')}*{g[2].replace(',','.') }"
     
     # Filtrer les codes produits longs et références techniques (comme 484000008582, 481281718533, etc.)
     # Ces codes sont souvent de longs nombres ou alphanumériques qu'on veut exclure
@@ -206,10 +463,23 @@ def extract_dimensions(text):
             # Exemple détecté: "Chargeur compatible rh5664 29v 0 75a pour aspirateur rowenta air force 360"
             return None
     
-    # Spécial: 2D cm avec code produit prefixe: "01 80x40cm" -> "80*40"
-    m2 = re.search(r"\b\d+\s+(\d+)[xX×*](\d+)cm\b", text)
-    if m2:
-        return f"{m2.group(1)}*{m2.group(2)}"
+    # Spécial: 3D decimal cm: "25 5x25 5x55cm" and "92 1x29 5x123cm" -> "25.5*25.5*55", "92.1*29.5*123"
+    m_3d_dec_cm = re.search(r"\b(\d+)\s+(\d+)[xX×*](\d+)\s+(\d+)[xX×*](\d+)\s*cm\b", text)
+    if m_3d_dec_cm:
+        g = m_3d_dec_cm.groups()
+        dim1 = f"{g[0]}.{g[1]}"
+        dim2 = f"{g[2]}.{g[3]}"
+        dim3 = g[4]
+        return f"{dim1}*{dim2}*{dim3}"
+    m_h2 = re.search(r"\b(\d+(?:[.,]\d+)?)\s*[xX×*]\s*[hH]\s*(\d+(?:[.,]\d+)?)\s*cm\b", text)
+    if m_h2:
+        g = m_h2.groups()
+        return f"{g[0].replace(',','.')}*{g[1].replace(',','.') }"
+    # Spécial: prefixes with units collées for 3D: "l32cm x p30cm x h170cm" -> "32*30*170"
+    m4 = re.search(r"\b[lL](\d+(?:[.,]\d+)?)cm\s*[xX×*]\s*[pP](\d+(?:[.,]\d+)?)cm\s*[xX×*]\s*[hH](\d+(?:[.,]\d+)?)cm\b", text)
+    if m4:
+        g = m4.groups()
+        return f"{g[0].replace(',','.')}*{g[1].replace(',','.')}*{g[2].replace(',','.') }"
     # Spécial: dimensions l/h 3D: "94l x 38l x 95h cm" -> "94*38*95"
     m_l3 = re.search(r"\b(\d+(?:[,\.]\d+)?)l\s*[xX×*]\s*(\d+(?:[,\.]\d+)?)l\s*[xX×*]\s*(\d+(?:[,\.]\d+)?)h\s*cm\b", text, re.IGNORECASE)
     if m_l3:
@@ -246,7 +516,7 @@ def extract_dimensions(text):
         # Format dimensions principales 2D: "160x200" -> "160*200" (priorité haute, avant les petits nombres)
         r'\b(\d{2,3})[xX×*](\d{2,3})\b(?!\s*kg)(?!\s*[xX×*]\d+)',
         # Format avec l/h notation avec espaces décimaux: "l 80 x 39 5 x h 75cm" -> "80*39.5*75"
-        r'[lh]\s*(\d+(?:[,\.]\d+)?)\s*[xX×*]\s*(\d+)\s+(\d+)\s*[xX×*]\s*[lh]\s*(\d+(?:[,\.]\d+)?)cm',
+        r'[lh]\s*(\d+(?:[,\.]\d+)?)\s*[xX×*]\s*(\d+)\s+(\d+)\s*[xX×*]\s*[hH]\s*(\d+(?:[,\.]\d+)?)cm',
         # Format avec l/h notation: "l 43 x l 6 x h 6 cm" -> "43*6*6"
         r'[lh]\s*(\d+(?:[,\.]\d+)?)\s*[xX×*]\s*[lh]\s*(\d+(?:[,\.]\d+)?)\s*[xX×*]\s*[lh]\s*(\d+(?:[,\.]\d+)?)\s*cm',
         # Format avec diam notation: "diam 35 x h 40 cm" -> "35*40"
@@ -328,7 +598,7 @@ def extract_dimensions(text):
                         dim3 = match[3].replace(',', '.')
                         dimensions.append(f"{dim1}*{dim2}*{dim3}")
                         main_dimension_found = True
-                    elif pattern_idx == 13:  # Format l/h avec espaces décimaux à la fin (index shifted +1)
+                    elif pattern_idx == 13:  # Format l/h avec espaces décimales à la fin (index shifted +1)
                         dim1 = match[0].replace(',', '.')
                         dim2 = match[1].replace(',', '.')
                         dim3 = match[2] + '.' + match[3]  # "54" + "." + "5" = "54.5"
@@ -727,6 +997,7 @@ def predict_nature_original_file():
         
         # Trier par nombre total (plus représentatif)
         category_stats.sort(key=lambda x: x['total'], reverse=True)
+
         
         for stat in category_stats[:15]:
             print(f"   {stat['accuracy']:5.1f}% '{stat['category']}' ({stat['correct']}/{stat['total']})")
