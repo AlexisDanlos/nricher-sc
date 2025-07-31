@@ -10,6 +10,7 @@ import pandas as pd
 import re
 from datetime import datetime
 import numpy as np
+from text_processing import clean_text
 
 # Configuration GPU/CPU selon disponibilité
 try:
@@ -18,7 +19,7 @@ try:
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
-    print("⚠️  PyTorch non disponible - Chargement modèles CPU uniquement")
+    print("PyTorch non disponible - Chargement modèles CPU uniquement")
 
 class TextClassifierNet(nn.Module):
     """Même architecture que dans main.py - nécessaire pour charger le modèle PyTorch"""
@@ -66,32 +67,6 @@ class TextClassifierNet(nn.Module):
         x = self.fc5(x)
         return x
 
-def clean_text(text):
-    """Même fonction de nettoyage que dans main.py"""
-    text = str(text).lower()
-    
-    text = re.sub(r'&', ' et ', text)
-    text = re.sub(r'%', ' pourcent ', text)
-    text = re.sub(r'\+', ' plus ', text)
-    text = re.sub(r'@', ' arobase ', text)
-    
-    dimension_patterns = re.findall(r'\d+(?:[,\.]\d+)?\s*[xX×*]\s*\d+(?:[,\.]\d+)?(?:\s*[xX×*]\s*\d+(?:[,\.]\d+)?)?', text)
-    for i, dim in enumerate(dimension_patterns):
-        text = text.replace(dim, f' dimension{i} ')
-    
-    text = re.sub(r'\b(xs|s|m|l|xl|xxl|xxxl)\b', r' taille_\1 ', text)
-    text = re.sub(r'\b(\d+)\s*(cm|mm|m|kg|g|ml|l)\b', r' mesure_\1_\2 ', text)
-    
-    text = re.sub(r'[^\w\s]', ' ', text)
-    
-    words = text.split()
-    words = [word for word in words if len(word) >= 2]
-    
-    text = ' '.join(words)
-    text = re.sub(r'\s+', ' ', text).strip()
-    
-    return text
-
 class ModelLoader:
     def __init__(self, model_dir="models"):
         self.model_dir = model_dir
@@ -100,11 +75,16 @@ class ModelLoader:
         self.metadata = None
         self.tfidf_configs = None
         self.pipeline = None
+        # Default device for inference: GPU if available
+        if TORCH_AVAILABLE and torch.cuda.is_available():
+            self.device = torch.device('cuda')
+        else:
+            self.device = torch.device('cpu')
         
     def list_available_models(self):
         """Liste tous les modèles disponibles dans le dossier"""
         if not os.path.exists(self.model_dir):
-            print(f"❌ Dossier {self.model_dir} introuvable")
+            print(f"Dossier {self.model_dir} introuvable")
             return []
         
         models = []
@@ -123,7 +103,7 @@ class ModelLoader:
                         'metadata_file': metadata_file
                     })
             except Exception as e:
-                print(f"⚠️  Erreur lecture {metadata_file}: {e}")
+                print(f"Erreur lecture {metadata_file}: {e}")
         
         return sorted(models, key=lambda x: x['timestamp'], reverse=True)
     
@@ -131,11 +111,11 @@ class ModelLoader:
         """Charge le modèle le plus récent"""
         models = self.list_available_models()
         if not models:
-            print("❌ Aucun modèle trouvé")
+            print("Aucun modèle trouvé")
             return False
         
         latest = models[0]
-        print(f"📚 Chargement du modèle le plus récent: {latest['timestamp']}")
+        print(f"Chargement du modèle le plus récent: {latest['timestamp']}")
         return self.load_model_by_timestamp(latest['timestamp'])
     
     def load_model_by_timestamp(self, timestamp):
@@ -153,16 +133,18 @@ class ModelLoader:
             
             model_type = self.metadata['model_type']
             
-            if model_type == 'pytorch_gpu' and TORCH_AVAILABLE:
+            # Load PyTorch models (GPU or CPU) if torch is available
+            if model_type.startswith('pytorch') and TORCH_AVAILABLE:
                 return self._load_pytorch_model(timestamp)
-            elif model_type in ['ensemble_cpu', 'randomforest_cpu']:
+            # Load ensemble CPU models
+            elif model_type == 'ensemble_cpu':
                 return self._load_cpu_model(timestamp)
             else:
-                print(f"❌ Type de modèle non supporté: {model_type}")
+                print(f"Type de modèle non supporté: {model_type}")
                 return False
                 
         except Exception as e:
-            print(f"❌ Erreur chargement modèle {timestamp}: {e}")
+            print(f"Erreur chargement modèle {timestamp}: {e}")
             return False
     
     def _load_pytorch_model(self, timestamp):
@@ -183,7 +165,7 @@ class ModelLoader:
                 # Fallback pour les versions plus anciennes de PyTorch
                 checkpoint = torch.load(model_file, map_location='cpu')
             except Exception as e:
-                print(f"⚠️  Tentative de chargement alternatif: {e}")
+                print(f"Tentative de chargement alternatif: {e}")
                 # Tentative avec allowlist des globals pour numpy
                 try:
                     # Pour PyTorch 2.6+ avec weights_only=True
@@ -203,14 +185,16 @@ class ModelLoader:
             )
             
             self.model.load_state_dict(checkpoint['model_state_dict'])
+            # Move model to inference device
+            self.model.to(self.device)
             self.model.eval()
             
-            print(f"✅ Modèle PyTorch chargé (score: {checkpoint['test_score']:.3f})")
+            print(f"Modèle PyTorch chargé (score: {checkpoint['test_score']:.3f})")
             return True
             
         except Exception as e:
-            print(f"❌ Erreur chargement PyTorch: {e}")
-            print(f"💡 Suggestion: Regénérez le modèle avec la version actuelle de PyTorch")
+            print(f"Erreur chargement PyTorch: {e}")
+            print(f"Suggestion: Regénérez le modèle avec la version actuelle de PyTorch")
             return False
     
     def _load_cpu_model(self, timestamp):
@@ -225,17 +209,17 @@ class ModelLoader:
             self.pipeline = joblib.load(model_file)
             
             score = self.metadata['test_score']
-            print(f"✅ Modèle CPU {model_type} chargé (score: {score:.3f})")
+            print(f"Modèle CPU {model_type} chargé (score: {score:.3f})")
             return True
             
         except Exception as e:
-            print(f"❌ Erreur chargement CPU: {e}")
+            print(f"Erreur chargement CPU: {e}")
             return False
     
     def predict(self, texts):
         """Fait des prédictions sur une liste de textes"""
         if not self.is_loaded():
-            print("❌ Aucun modèle chargé")
+            print("Aucun modèle chargé")
             return None
         
         # Nettoyer les textes
@@ -245,12 +229,17 @@ class ModelLoader:
         cleaned_texts = [clean_text(text) for text in texts]
         
         try:
-            if self.metadata['model_type'] == 'pytorch_gpu':
+            # Use PyTorch prediction if a PyTorch model is loaded (GPU or CPU)
+            if self.model is not None:
                 return self._predict_pytorch(cleaned_texts)
-            else:
+            # Otherwise, use CPU pipeline if available
+            elif self.pipeline is not None:
                 return self._predict_cpu(cleaned_texts)
+            else:
+                print("Aucun modèle pour prédiction")
+                return None
         except Exception as e:
-            print(f"❌ Erreur prédiction: {e}")
+            print(f"Erreur prédiction: {e}")
             return None
     
     def _predict_pytorch(self, texts):
@@ -262,14 +251,16 @@ class ModelLoader:
             X_features.append(X_tfidf)
         
         X_combined = np.hstack(X_features)
-        X_tensor = torch.FloatTensor(X_combined)
-        
+        # Create tensor and move to inference device
+        X_tensor = torch.FloatTensor(X_combined).to(self.device)
+
         self.model.eval()
         with torch.no_grad():
             output = self.model(X_tensor)
             _, predicted = torch.max(output.data, 1)
-            predictions = predicted.numpy()
-        
+            # Ensure tensor is on CPU before converting to numpy
+            predictions = predicted.cpu().numpy()
+
         # Convertir en labels
         return self.label_encoder.inverse_transform(predictions)
     
@@ -298,17 +289,17 @@ class ModelLoader:
 
 def demo_usage():
     """Démonstration d'utilisation"""
-    print("🔍 Démonstration du chargeur de modèles")
+    print("Démonstration du chargeur de modèles")
     print("=" * 50)
     
     loader = ModelLoader()
     
     # Lister les modèles disponibles
-    print("📚 Modèles disponibles:")
+    print("Modèles disponibles:")
     models = loader.list_available_models()
     
     if not models:
-        print("❌ Aucun modèle trouvé. Exécutez d'abord main.py pour créer un modèle.")
+        print("Aucun modèle trouvé. Exécutez d'abord main.py pour créer un modèle.")
         return
     
     for i, model in enumerate(models, 1):
@@ -317,7 +308,7 @@ def demo_usage():
     # Charger le modèle le plus récent
     if loader.load_latest_model():
         info = loader.get_model_info()
-        print(f"\n📊 Modèle chargé: {info['type']} du {info['timestamp']}")
+        print(f"\nModèle chargé: {info['type']} du {info['timestamp']}")
         print(f"   Score: {info['score']:.3f}, Classes: {info['classes']}, Device: {info['device']}")
         
         # Exemples de prédictions
@@ -328,14 +319,14 @@ def demo_usage():
             "Canapé 3 places gris anthracite",
             "Étagère murale 5 niveaux"
         ]
-        
-        print(f"\n🎯 Test de prédictions:")
+
+        print(f"\nTest de prédictions:")
         predictions = loader.predict(exemples)
         
         for text, pred in zip(exemples, predictions):
             print(f"   '{text}' → {pred}")
         
-        print(f"\n✅ Démonstration terminée!")
+        print(f"\nDémonstration terminée!")
     
 if __name__ == "__main__":
     demo_usage()

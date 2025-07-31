@@ -1,27 +1,8 @@
-"""
-Module pour la définition et les utilitaires du modèle PyTorch.
-Contient la classe TextClassifierNet et les fonctions d'affichage de progression.
-"""
-
-import torch
 import torch.nn as nn
 
 class TextClassifierNet(nn.Module):
-    """
-    Réseau de neurones avancé pour la classification de texte - Version exacte du backup.
-    Architecture sophistiquée avec connexions résiduelles et diverses fonctions d'activation.
-    """
     
     def __init__(self, input_size, hidden_size, num_classes, dropout_rate=0.4):
-        """
-        Initialise le réseau de neurones avancé.
-        
-        Args:
-            input_size (int): Taille d'entrée (nombre de features TF-IDF)
-            hidden_size (int): Taille de la couche cachée
-            num_classes (int): Nombre de classes de sortie
-            dropout_rate (float): Taux de dropout pour la régularisation
-        """
         super(TextClassifierNet, self).__init__()
         # Architecture plus profonde et sophistiquée
         self.fc1 = nn.Linear(input_size, hidden_size)
@@ -53,15 +34,6 @@ class TextClassifierNet(nn.Module):
                     nn.init.zeros_(m.bias)
         
     def forward(self, x):
-        """
-        Passe avant du réseau avec connexions résiduelles et activations variées.
-        
-        Args:
-            x (torch.Tensor): Tensor d'entrée
-            
-        Returns:
-            torch.Tensor: Sortie du réseau (logits)
-        """
         # Couche 1
         x = self.fc1(x)
         x = self.batch_norm1(x)
@@ -93,24 +65,11 @@ class TextClassifierNet(nn.Module):
         return x
 
 def print_progress(step, description):
-    """
-    Affiche une barre de progression formatée.
-    
-    Args:
-        step (int): Numéro de l'étape actuelle
-        description (str): Description de l'étape
-    """
     print(f"\n{'='*50}")
-    print(f"📋 ÉTAPE {step}: {description.upper()}")
+    print(f"ÉTAPE {step}: {description.upper()}")
     print(f"{'='*50}")
 
 def print_configuration(config):
-    """
-    Affiche la configuration du modèle de façon formatée.
-    
-    Args:
-        config (dict): Dictionnaire de configuration
-    """
-    print("🔧 Configuration du modèle:")
+    print("Configuration du modèle:")
     for key, value in config.items():
         print(f"   {key}: {value}")

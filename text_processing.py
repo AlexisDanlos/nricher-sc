@@ -4,83 +4,7 @@ Contient les fonctions de nettoyage de texte, extraction de dimensions et couleu
 """
 
 import re
-
-# Dictionnaire de mapping des couleurs
-color_mapping = {
-    # Couleurs de base
-    "rouge": "rouge", "rouges": "rouge",
-    "bleu": "bleu", "bleue": "bleu", "bleus": "bleu", "bleues": "bleu",
-    "vert": "vert", "verte": "vert", "verts": "vert", "vertes": "vert",
-    "jaune": "jaune", "jaunes": "jaune",
-    "orange": "orange", "orangé": "orange", "orangée": "orange", "orangés": "orange", "orangées": "orange",
-    "violet": "violet", "violette": "violet", "violets": "violet", "violettes": "violet",
-    "rose": "rose", "roses": "rose",
-    "marron": "marron", "marrons": "marron",
-    "brun": "brun", "brune": "brun", "bruns": "brun", "brunes": "brun",
-    "beige": "beige", "beiges": "beige",
-    "crème": "crème", "crèmes": "crème", "creme": "crème", "cremes": "crème",
-    
-    # Couleurs neutres
-    "blanc": "blanc", "blanche": "blanc", "blancs": "blanc", "blanches": "blanc",
-    "noir": "noir", "noire": "noir", "noirs": "noir", "noires": "noir",
-    "gris": "gris", "grise": "gris", "grises": "gris",
-    "ivoire": "ivoire", "ivoires": "ivoire",
-    "écru": "écru", "écrues": "écru", "ecru": "écru", "ecrues": "écru",
-    
-    # Couleurs de bois
-    "chêne": "chêne", "chenes": "chêne", "chene": "chêne", "chenes": "chêne",
-    "hêtre": "hêtre", "hetres": "hêtre", "hetre": "hêtre", "hetres": "hêtre",
-    "pin": "pin", "pins": "pin",
-    "sapin": "sapin", "sapins": "sapin",
-    "acajou": "acajou", "acajous": "acajou",
-    "noyer": "noyer", "noyers": "noyer",
-    "frêne": "frêne", "frenes": "frêne", "frene": "frêne", "frenes": "frêne",
-    "érable": "érable", "erables": "érable", "erable": "érable", "erables": "érable",
-    "bambou": "bambou", "bambous": "bambou",
-    "rotin": "rotin", "rotins": "rotin",
-    "teck": "teck", "tecks": "teck",
-    "wengé": "wengé", "wenges": "wengé", "wenge": "wengé", "wenges": "wengé",
-    "palissandre": "palissandre", "palissandres": "palissandre",
-    "eucalyptus": "eucalyptus",
-    
-    # Couleurs métalliques
-    "argent": "argent", "argenté": "argent", "argentée": "argent", "argentés": "argent", "argentées": "argent",
-    "or": "or", "doré": "or", "dorée": "or", "dorés": "or", "dorées": "or",
-    "bronze": "bronze", "bronzé": "bronze", "bronzée": "bronze", "bronzés": "bronze", "bronzées": "bronze",
-    "cuivre": "cuivre", "cuivré": "cuivre", "cuivrée": "cuivre", "cuivrés": "cuivre", "cuivrées": "cuivre",
-    "acier": "acier", "aciers": "acier",
-    "inox": "inox", "inoxydable": "inox",
-    "chrome": "chrome", "chromé": "chrome", "chromée": "chrome", "chromés": "chrome", "chromées": "chrome",
-    "laiton": "laiton", "laitons": "laiton",
-    "aluminium": "aluminium", "aluminiums": "aluminium",
-    "fer": "fer", "fers": "fer",
-    "zinc": "zinc", "zincs": "zinc",
-    "étain": "étain", "etain": "étain", "etains": "étain",
-    
-    # Couleurs spéciales
-    "transparent": "transparent", "transparente": "transparent", "transparents": "transparent", "transparentes": "transparent",
-    "opaque": "opaque", "opaques": "opaque",
-    "mat": "mat", "mate": "mat", "mats": "mat", "mates": "mat",
-    "brillant": "brillant", "brillante": "brillant", "brillants": "brillant", "brillantes": "brillant",
-    "satiné": "satiné", "satinée": "satiné", "satinés": "satiné", "satinées": "satiné",
-    "anthracite": "anthracite", "anthracites": "anthracite",
-    "charbon": "charbon", "charbons": "charbon",
-    "ardoise": "ardoise", "ardoises": "ardoise",
-    "graphite": "graphite", "graphites": "graphite",
-    
-    # Couleurs nature
-    "naturel": "naturel", "naturelle": "naturel", "naturels": "naturel", "naturelles": "naturel",
-    "brut": "brut", "brute": "brut", "bruts": "brut", "brutes": "brut",
-    "rustique": "rustique", "rustiques": "rustique",
-    "vintage": "vintage", "vintages": "vintage",
-    "antique": "antique", "antiques": "antique",
-    "vieilli": "vieilli", "vieillie": "vieilli", "vieillis": "vieilli", "vieillies": "vieilli",
-    
-    # Couleurs vives
-    "fluo": "fluo", "fluos": "fluo",
-    "néon": "néon", "néons": "néon",
-    "phosphorescent": "phosphorescent", "phosphorescente": "phosphorescent", "phosphorescents": "phosphorescent", "phosphorescentes": "phosphorescent"
-}
+from color_mapping import color_mapping, color_adjectives, adjective_normalization
 
 def clean_text(text):
     """
@@ -190,44 +114,9 @@ def extract_dimensions(text):
     return None
 
 def extract_colors(text):
-    """
-    Extrait les couleurs d'un texte.
-    
-    Args:
-        text (str): Texte contenant potentiellement des couleurs
-        
-    Returns:
-        str: Couleurs extraites séparées par des virgules
-    """
     text = str(text).lower()  # Convert to string first, then to lowercase
     
     found_colors = set()  # Utilise un set pour éviter les doublons
-    
-    # Liste des adjectifs de couleur courants
-    color_adjectives = [
-        "clair", "claire", "clairs", "claires",
-        "foncé", "foncée", "foncés", "foncées", 
-        "sombre", "sombres",
-        "pale", "pâle", "pales", "pâles",
-        "vif", "vive", "vifs", "vives",
-        "intense", "intenses",
-        "pastel", "pastels",
-        "tendre", "tendres",
-        "doux", "douce", "douces",
-        "léger", "légère", "légers", "légères",
-        "profond", "profonde", "profonds", "profondes"
-    ]
-    
-    # Dictionnaire pour normaliser les adjectifs vers leur forme de base
-    adjective_normalization = {
-        "claire": "clair", "clairs": "clair", "claires": "clair",
-        "foncée": "foncé", "foncés": "foncé", "foncées": "foncé",
-        "pâle": "pâle", "pales": "pâle", "pâles": "pâle",
-        "vive": "vif", "vifs": "vif", "vives": "vif",
-        "douce": "doux", "douces": "doux",
-        "légère": "léger", "légers": "léger", "légères": "léger",
-        "profonde": "profond", "profonds": "profond", "profondes": "profond"
-    }
     
     # Préparation des patterns
     all_color_variants = '|'.join(re.escape(couleur) for couleur in color_mapping.keys())
