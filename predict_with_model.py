@@ -43,14 +43,21 @@ color_mapping = {
     "érable": "érable", "érables": "érable",
     "noyer": "noyer", "noyers": "noyer",
     "hêtre": "hêtre", "hêtres": "hêtre",
+    "h tre": "hêtre", "h tres": "hêtre",
+    "hetre": "hêtre", "hetres": "hêtre",
     "frêne": "frêne", "frênes": "frêne",
+    "fr ne": "frêne", "fr nes": "frêne",
+    "frene": "frêne", "frenes": "frêne",
     "merisier": "merisier", "merisiers": "merisier",
     "châtaignier": "châtaignier", "châtaigniers": "châtaignier",
+    "chataignier": "châtaignier", "chataigniers": "châtaignier",
+    "ch taignier": "châtaignier", "ch taigniers": "châtaignier",
     "cerisier": "cerisier", "cerisiers": "cerisier",
     
     # Couleurs pastel et nuances
     "beige": "beige", "beiges": "beige",
     "crème": "crème", "crèmes": "crème",
+    "creme": "crème", "cremes": "crème",
     "ivoire": "ivoire", "ivoires": "ivoire",
     "écru": "écru", "écrus": "écru",
     "taupe": "taupe", "taupes": "taupe",
@@ -960,66 +967,66 @@ def predict_nature_original_file():
     # Fichier à analyser
     input_file = "20210614 Ecommerce sales.xlsb"
     
-    print("🔮 Prédiction de Nature avec le modèle entraîné")
+    print("Prédiction de Nature avec le modèle entraîné")
     print("=" * 60)
     
     # Vérifier que le fichier existe
     if not os.path.exists(input_file):
-        print(f"❌ Fichier non trouvé: {input_file}")
-        print("📁 Fichiers disponibles:")
+        print(f"Fichier non trouvé: {input_file}")
+        print("Fichiers disponibles:")
         for file in os.listdir("."):
             if file.endswith((".xlsx", ".xlsb")):
                 print(f"   - {file}")
         return
     
     # Charger le modèle
-    print("📚 Chargement du modèle...")
+    print("Chargement du modèle...")
     loader = ModelLoader()
     
     models = loader.list_available_models()
     if not models:
-        print("❌ Aucun modèle trouvé. Exécutez d'abord main.py pour créer un modèle.")
+        print("Aucun modèle trouvé. Exécutez d'abord main.py pour créer un modèle.")
         return
     
-    print(f"📊 Modèles disponibles: {len(models)}")
+    print(f"Modèles disponibles: {len(models)}")
     for i, model in enumerate(models[:3], 1):  # Afficher les 3 plus récents
         print(f"   {i}. {model['timestamp']} - {model['type']} (score: {model['score']:.3f})")
     
     # Charger le modèle le plus récent
     if not loader.load_latest_model():
-        print("❌ Impossible de charger le modèle")
+        print("Impossible de charger le modèle")
         return
     
     model_info = loader.get_model_info()
-    print(f"✅ Modèle chargé: {model_info['type']} du {model_info['timestamp']}")
-    print(f"   📈 Score d'entraînement: {model_info['score']:.3f}")
-    print(f"   🏷️  Nombre de classes: {model_info['classes']}")
+    print(f"Modèle chargé: {model_info['type']} du {model_info['timestamp']}")
+    print(f"   Score d'entraînement: {model_info['score']:.3f}")
+    print(f"   Nombre de classes: {model_info['classes']}")
     
     # Charger le fichier original
-    print(f"\n📁 Chargement du fichier: {input_file}")
+    print(f"\nChargement du fichier: {input_file}")
     try:
         df = pd.read_excel(input_file)
-        print(f"✅ Fichier chargé: {len(df)} lignes")
+        print(f"Fichier chargé: {len(df)} lignes")
         
         # Vérifier les colonnes nécessaires
         required_cols = ['Nature', 'Libellé produit']
         missing_cols = [col for col in required_cols if col not in df.columns]
         
         if missing_cols:
-            print(f"❌ Colonnes manquantes: {missing_cols}")
-            print(f"📊 Colonnes disponibles: {list(df.columns)}")
+            print(f"Colonnes manquantes: {missing_cols}")
+            print(f"Colonnes disponibles: {list(df.columns)}")
             return
         
         # Nettoyer les données
         df_clean = df[['Nature', 'Libellé produit']].dropna()
-        print(f"📊 Après nettoyage: {len(df_clean)} lignes valides")
+        print(f"Après nettoyage: {len(df_clean)} lignes valides")
         
         # Prédiction par lots pour économiser la mémoire
         batch_size = 5000
         total_rows = len(df_clean)
         predictions = []
         
-        print(f"\n🔮 Prédiction par lots de {batch_size} éléments...")
+        print(f"\nPrédiction par lots de {batch_size} éléments...")
         
         for i in range(0, total_rows, batch_size):
             batch_end = min(i + batch_size, total_rows)
@@ -1037,46 +1044,46 @@ def predict_nature_original_file():
         df_clean['predicted_nature'] = predictions
         
         # Extraire les couleurs et dimensions du libellé produit
-        print(f"\n🎨 Extraction des couleurs et dimensions...")
+        print(f"\nExtraction des couleurs et dimensions...")
         df_clean['couleurs_extraites'] = df_clean['Libellé produit'].apply(extract_colors)
         df_clean['dimensions_extraites'] = df_clean['Libellé produit'].apply(extract_dimensions)
         
         # Statistiques d'extraction
         colors_found = df_clean['couleurs_extraites'].str.len() > 0
         dimensions_found = df_clean['dimensions_extraites'].notna()
-        
-        print(f"   🎨 Couleurs trouvées: {colors_found.sum()}/{len(df_clean)} produits ({(colors_found.sum()/len(df_clean)*100):.1f}%)")
-        print(f"   📏 Dimensions trouvées: {dimensions_found.sum()}/{len(df_clean)} produits ({(dimensions_found.sum()/len(df_clean)*100):.1f}%)")
-        
+
+        print(f"   Couleurs trouvées: {colors_found.sum()}/{len(df_clean)} produits ({(colors_found.sum()/len(df_clean)*100):.1f}%)")
+        print(f"   Dimensions trouvées: {dimensions_found.sum()}/{len(df_clean)} produits ({(dimensions_found.sum()/len(df_clean)*100):.1f}%)")
+
         # Calculer la précision
         correct_predictions = (df_clean['Nature'] == df_clean['predicted_nature']).sum()
         total_predictions = len(df_clean)
         accuracy = (correct_predictions / total_predictions) * 100
-        
-        print(f"\n📊 Résultats de la prédiction:")
-        print(f"   🎯 Précision globale: {accuracy:.2f}% ({correct_predictions}/{total_predictions})")
-        print(f"   ❌ Erreurs: {total_predictions - correct_predictions} prédictions incorrectes")
-        
+
+        print(f"\nRésultats de la prédiction:")
+        print(f"   Précision globale: {accuracy:.2f}% ({correct_predictions}/{total_predictions})")
+        print(f"   Erreurs: {total_predictions - correct_predictions} prédictions incorrectes")
+
         # Ajouter une colonne de validation
         df_clean['prediction_correcte'] = df_clean.apply(
             lambda row: 'VRAI' if row['Nature'] == row['predicted_nature'] else 'FAUX', axis=1
         )
         
         # Analyser les erreurs les plus fréquentes
-        print(f"\n🔍 Analyse des erreurs:")
+        print(f"\nAnalyse des erreurs:")
         errors = df_clean[df_clean['prediction_correcte'] == 'FAUX']
         
         if len(errors) > 0:
             # Top 10 des erreurs par catégorie réelle
             error_analysis = errors.groupby(['Nature', 'predicted_nature']).size().reset_index(name='count')
             error_analysis = error_analysis.sort_values('count', ascending=False)
-            
-            print(f"   📋 Top 10 des confusions les plus fréquentes:")
+
+            print(f"   Top 10 des confusions les plus fréquentes:")
             for i, row in error_analysis.head(10).iterrows():
                 print(f"      {row['count']:4d}x '{row['Nature']}' → '{row['predicted_nature']}'")
             
             # Catégories avec le plus d'erreurs
-            print(f"\n   📊 Catégories avec le plus d'erreurs:")
+            print(f"\n   Catégories avec le plus d'erreurs:")
             categories_errors = errors['Nature'].value_counts().head(10)
             for category, error_count in categories_errors.items():
                 total_category = len(df_clean[df_clean['Nature'] == category])
@@ -1084,7 +1091,7 @@ def predict_nature_original_file():
                 print(f"      '{category}': {error_count}/{total_category} ({error_rate:.1f}% d'erreur)")
         
         # Analyser les prédictions par catégorie
-        print(f"\n📈 Précision par catégorie (top 15):")
+        print(f"\nPrécision par catégorie (top 15):")
         category_stats = []
         
         for category in df_clean['Nature'].unique():
@@ -1108,7 +1115,7 @@ def predict_nature_original_file():
             print(f"   {stat['accuracy']:5.1f}% '{stat['category']}' ({stat['correct']}/{stat['total']})")
         
         # Exemples d'erreurs intéressantes
-        print(f"\n📋 Exemples d'erreurs intéressantes:")
+        print(f"\nExemples d'erreurs intéressantes:")
         interesting_errors = errors.sample(min(10, len(errors))) if len(errors) > 0 else pd.DataFrame()
         
         for i, row in interesting_errors.iterrows():
@@ -1131,50 +1138,50 @@ def predict_nature_original_file():
                     df_final[col] = df[col].iloc[:len(df_final)]
         
         df_final.to_excel(output_file, index=False)
-        print(f"\n💾 Résultats sauvegardés: {output_file}")
+        print(f"\nRésultats sauvegardés: {output_file}")
         
         # Résumé final
-        print(f"\n📊 Résumé final:")
-        print(f"   📁 Fichier analysé: {input_file}")
-        print(f"   🤖 Modèle utilisé: {model_info['type']} ({model_info['timestamp']})")
-        print(f"   📈 Précision: {accuracy:.2f}%")
-        print(f"   📊 Total produits: {total_predictions}")
-        print(f"   ✅ Prédictions correctes: {correct_predictions}")
-        print(f"   ❌ Prédictions incorrectes: {total_predictions - correct_predictions}")
-        print(f"   🎨 Couleurs extraites: {colors_found.sum()} produits")
-        print(f"   📏 Dimensions extraites: {dimensions_found.sum()} produits")
-        print(f"   💾 Fichier de sortie: {output_file}")
+        print(f"\nRésumé final:")
+        print(f"   Fichier analysé: {input_file}")
+        print(f"   Modèle utilisé: {model_info['type']} ({model_info['timestamp']})")
+        print(f"   Précision: {accuracy:.2f}%")
+        print(f"   Total produits: {total_predictions}")
+        print(f"   Prédictions correctes: {correct_predictions}")
+        print(f"   Prédictions incorrectes: {total_predictions - correct_predictions}")
+        print(f"   Couleurs extraites: {colors_found.sum()} produits")
+        print(f"   Dimensions extraites: {dimensions_found.sum()} produits")
+        print(f"   Fichier de sortie: {output_file}")
         
     except Exception as e:
-        print(f"❌ Erreur lors du traitement: {str(e)}")
+        print(f"Erreur lors du traitement: {str(e)}")
         import traceback
         traceback.print_exc()
 
 def quick_sample_test():
     """Test rapide sur un échantillon de 1000 produits"""
-    print("⚡ Test rapide sur échantillon")
+    print("Test rapide sur échantillon")
     print("=" * 40)
     
     # Charger le modèle
     loader = ModelLoader()
     if not loader.load_latest_model():
-        print("❌ Impossible de charger le modèle")
+        print("Impossible de charger le modèle")
         return
     
     # Charger un échantillon
     df = pd.read_excel("20210614 Ecommerce sales.xlsb", nrows=1000)
     df_clean = df[['Nature', 'Libellé produit']].dropna()
     
-    print(f"📊 Test sur {len(df_clean)} produits...")
+    print(f"Test sur {len(df_clean)} produits...")
     
     # Prédiction
     predictions = loader.predict(df_clean['Libellé produit'].tolist())
     accuracy = (df_clean['Nature'] == predictions).mean() * 100
-    
-    print(f"🎯 Précision sur l'échantillon: {accuracy:.2f}%")
+
+    print(f"Précision sur l'échantillon: {accuracy:.2f}%")
 
 if __name__ == "__main__":
-    print("🔮 Script de prédiction Nature avec modèle entraîné")
+    print("Script de prédiction Nature avec modèle entraîné")
     print("=" * 50)
     
     # Demander à l'utilisateur s'il veut un test rapide ou complet
@@ -1185,4 +1192,4 @@ if __name__ == "__main__":
         predict_nature_original_file()
     
     print("=" * 50)
-    print("✅ Script terminé")
+    print("Script terminé")
