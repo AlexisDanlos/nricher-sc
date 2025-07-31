@@ -49,6 +49,19 @@ def extract_dimensions(text):
         a, b, c, d = m_last_space_dec.groups()
         return f"{a}*{b}*{c}.{d}"
 
+    # Case 6: l/h/p format: 'l 100 cm x h 200 cm x p 50 cm' -> '100*200*50'
+    # Also handles cases where middle dimension lacks cm: 'l 100 cm x h 200 x p 50 cm'
+    m_lhp_format = re.search(r"[lL]\s*(\d+)\s*cm.*?[hH]\s*(\d+)(?:\s*cm)?.*?[pP]\s*(\d+)\s*cm", original_text, re.IGNORECASE)
+    if m_lhp_format:
+        l, h, p = m_lhp_format.groups()
+        return f"{l}*{h}*{p}"
+
+    # Case 7: 2D space-decimal with meters: '10 05 m x 0 53 m' -> '10.05*0.53'
+    m_2d_space_m = re.search(r"\b(\d+)\s+(\d+)\s*m\s*[xX×*]\s*(\d+)\s+(\d+)\s*m\b", original_text, re.IGNORECASE)
+    if m_2d_space_m:
+        a, b, c, d = m_2d_space_m.groups()
+        return f"{a}.{b}*{c}.{d}"
+
     # Count separators early
     sep_count = len(re.findall(r"[xX×*]", original_text))
     
