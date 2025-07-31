@@ -65,6 +65,7 @@ color_mapping = {
     "chrome": "chrome", "chromé": "chrome", "chromée": "chrome", "chromés": "chrome", "chromées": "chrome",
     "nickel": "nickel", "nickels": "nickel",
     "platine": "platine", "platines": "platine",
+    "acier": "acier", "aciér": "acier", "acières": "acier", "aciérs": "acier",
     
     # Couleurs spéciales
     "transparent": "transparent", "transparente": "transparent", "transparents": "transparent", "transparentes": "transparent",
