@@ -62,6 +62,18 @@ def extract_dimensions(text):
         a, b, c, d = m_2d_space_m.groups()
         return f"{a}.{b}*{c}.{d}"
 
+    # Case 8: l/l/h format with space-decimal: 'l 183 5 cm x l 98 cm x h 97 cm' -> '183.5*98*97'
+    m_llh_format = re.search(r"[lL]\s*(\d+)\s+(\d+)\s*cm.*?[lL]\s*(\d+)\s*cm.*?[hH]\s*(\d+)\s*cm", original_text, re.IGNORECASE)
+    if m_llh_format:
+        l1, l2, w, h = m_llh_format.groups()
+        return f"{l1}.{l2}*{w}*{h}"
+
+    # Case 9: l/h/p format with space-decimal in l: 'l 68 6 x h 99 x p 38 cm' -> '68.6*99*38'  
+    m_lhp_space_l = re.search(r"[lL]\s*(\d+)\s+(\d+).*?[hH]\s*(\d+).*?[pP]\s*(\d+)\s*cm", original_text, re.IGNORECASE)
+    if m_lhp_space_l:
+        l1, l2, h, p = m_lhp_space_l.groups()
+        return f"{l1}.{l2}*{h}*{p}"
+
     # Count separators early
     sep_count = len(re.findall(r"[xX×*]", original_text))
     
