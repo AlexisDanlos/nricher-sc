@@ -22,7 +22,6 @@ except ImportError:
     print("PyTorch non disponible - Chargement modèles CPU uniquement")
 
 class TextClassifierNet(nn.Module):
-    """Même architecture que dans main.py - nécessaire pour charger le modèle PyTorch"""
     def __init__(self, input_size, hidden_size, num_classes, dropout_rate=0.4):
         super(TextClassifierNet, self).__init__()
         self.fc1 = nn.Linear(input_size, hidden_size)
@@ -82,7 +81,6 @@ class ModelLoader:
             self.device = torch.device('cpu')
         
     def list_available_models(self):
-        """Liste tous les modèles disponibles dans le dossier"""
         if not os.path.exists(self.model_dir):
             print(f"Dossier {self.model_dir} introuvable")
             return []
@@ -108,7 +106,6 @@ class ModelLoader:
         return sorted(models, key=lambda x: x['timestamp'], reverse=True)
     
     def load_latest_model(self):
-        """Charge le modèle le plus récent"""
         models = self.list_available_models()
         if not models:
             print("Aucun modèle trouvé")
@@ -119,7 +116,6 @@ class ModelLoader:
         return self.load_model_by_timestamp(latest['timestamp'])
     
     def load_model_by_timestamp(self, timestamp):
-        """Charge un modèle par son timestamp"""
         try:
             # Charger les métadonnées
             metadata_file = f"{self.model_dir}/model_metadata_{timestamp}.pkl"
@@ -148,7 +144,6 @@ class ModelLoader:
             return False
     
     def _load_pytorch_model(self, timestamp):
-        """Charge un modèle PyTorch"""
         try:
             # Charger les configurations TF-IDF
             tfidf_file = f"{self.model_dir}/tfidf_configs_{timestamp}.pkl"
@@ -198,7 +193,6 @@ class ModelLoader:
             return False
     
     def _load_cpu_model(self, timestamp):
-        """Charge un modèle CPU (ensemble ou RandomForest)"""
         try:
             model_type = self.metadata['model_type']
             if model_type == 'ensemble_cpu':
@@ -217,7 +211,6 @@ class ModelLoader:
             return False
     
     def predict(self, texts):
-        """Fait des prédictions sur une liste de textes"""
         if not self.is_loaded():
             print("Aucun modèle chargé")
             return None
@@ -243,7 +236,6 @@ class ModelLoader:
             return None
     
     def _predict_pytorch(self, texts):
-        """Prédiction avec modèle PyTorch"""
         # Préparer les features TF-IDF
         X_features = []
         for tfidf in self.tfidf_configs:
@@ -265,16 +257,13 @@ class ModelLoader:
         return self.label_encoder.inverse_transform(predictions)
     
     def _predict_cpu(self, texts):
-        """Prédiction avec modèle CPU"""
         predictions = self.pipeline.predict(texts)
         return self.label_encoder.inverse_transform(predictions)
     
     def is_loaded(self):
-        """Vérifie si un modèle est chargé"""
         return (self.model is not None or self.pipeline is not None) and self.label_encoder is not None
     
     def get_model_info(self):
-        """Retourne les informations du modèle chargé"""
         if not self.is_loaded():
             return None
         
@@ -288,7 +277,6 @@ class ModelLoader:
         }
 
 def demo_usage():
-    """Démonstration d'utilisation"""
     print("Démonstration du chargeur de modèles")
     print("=" * 50)
     

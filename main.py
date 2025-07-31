@@ -14,7 +14,7 @@ import os
 from datetime import datetime
 
 from model_utils import TextClassifierNet, print_progress
-from data_processing import load_excel_data, create_tfidf_vectorizers, prepare_features, prepare_labels
+from data_processing import load_excel_data, create_tfidf_vectorizers, prepare_features, prepare_labels, augment_rare_categories
 
 # CONFIG
 FILE_PATH = "dataset.xlsx"
@@ -44,29 +44,31 @@ def main():
     
     print_progress(2, "Préparation des données")
     
-    # Filtrage des catégories rares pour améliorer les performances
-    # Utilisation de min=2 pour permettre la stratification (train_test_split nécessite ≥2 échantillons/classe)
-    min_samples_per_category = 2
-    # Duplication des samples pour les catégories rares <= min_samples_per_category
-    if min_samples_per_category > 1:
-        df = df[df[NATURE_COL].map(df[NATURE_COL].value_counts()) >= min_samples_per_category]
     category_counts = df[NATURE_COL].value_counts()
-    valid_categories = category_counts[category_counts >= min_samples_per_category].index
-    
-    # Filtration du dataset pour ne garder que les catégories avec assez d'exemples
-    df_filtered = df[df[NATURE_COL].isin(valid_categories)].copy()
-    removed_count = len(df) - len(df_filtered)
-    
-    # Reset des indices pour assurer la continuité
-    df_filtered = df_filtered.reset_index(drop=True)
-    
-    if removed_count > 0:
-        print(f"{removed_count} produits supprimés (catégories rares avec <{min_samples_per_category} exemples)")
-        print(f"Dataset d'entraînement: {len(df_filtered)} produits, {len(valid_categories)} catégories")
+    print(f"Catégories initiales: {len(category_counts)}")
+    min_samples_per_category = 100
+    print(f"Minimum d'échantillons par catégorie: {min_samples_per_category}")
 
-    print(f"Catégories avec ≥{min_samples_per_category} échantillons: {len(valid_categories)}")
-    print(f"Échantillons utilisés: {len(df_filtered)} / {len(df)}")
-    print(f"Répartition: min={category_counts[valid_categories].min()}, max={category_counts[valid_categories].max()}, moyenne={category_counts[valid_categories].mean():.1f}")
+    # Augmentation des données pour les catégories rares
+    df_augmented = augment_rare_categories(df, NATURE_COL, min_samples_per_category)
+    
+    # Vérification après augmentation
+    augmented_counts = df_augmented[NATURE_COL].value_counts()
+    valid_categories = category_counts[augmented_counts >= min_samples_per_category].index
+    print(f"Après augmentation: {len(df_augmented)} échantillons (+{len(df_augmented) - len(df)})")
+    print(f"Toutes les catégories ont maintenant ≥{min_samples_per_category} échantillons")
+    print(f"Répartition finale: min={augmented_counts.min()}, max={augmented_counts.max()}, moyenne={augmented_counts.mean():.1f}")
+    
+    # Utiliser le dataset augmenté
+    df_filtered = df_augmented.reset_index(drop=True)
+
+    # if removed_count > 0:
+    #     print(f"{removed_count} produits supprimés (catégories rares avec <{min_samples_per_category} exemples)")
+    #     print(f"Dataset d'entraînement: {len(df_filtered)} produits, {len(valid_categories)} catégories")
+
+    # print(f"Catégories avec ≥{min_samples_per_category} échantillons: {len(valid_categories)}")
+    # print(f"Échantillons utilisés: {len(df_filtered)} / {len(df)}")
+    # print(f"Répartition: min={category_counts[valid_categories].min()}, max={category_counts[valid_categories].max()}, moyenne={category_counts[valid_categories].mean():.1f}")
     
     # === 3. CRÉATION DES FEATURES ===
     print_progress(3, "Création des features TF-IDF")
