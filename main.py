@@ -17,7 +17,7 @@ from model_utils import TextClassifierNet, print_progress
 from data_processing import load_excel_data, create_tfidf_vectorizers, prepare_features, prepare_labels
 
 # CONFIG
-FILE_PATH = "ecommerce_corrected_20250729_184443.xlsx"
+FILE_PATH = "dataset.xlsx"
 LIBELLE_COL = "Libellé produit"
 NATURE_COL = "Nature"
 
@@ -38,19 +38,18 @@ else:
     print("Mode CPU activé (PyTorch)")
 
 def main():
-    """Fonction principale d'entraînement."""
-    
-    # === 1. CHARGEMENT DES DONNÉES ===
     print_progress(1, "Chargement des données")
     
     df = load_excel_data(FILE_PATH, LIBELLE_COL, NATURE_COL, max_rows=LIMIT_ROWS)
     
-    # === 2. PRÉPARATION DES DONNÉES ===
     print_progress(2, "Préparation des données")
     
     # Filtrage des catégories rares pour améliorer les performances
     # Utilisation de min=2 pour permettre la stratification (train_test_split nécessite ≥2 échantillons/classe)
-    min_samples_per_category = 1
+    min_samples_per_category = 2
+    # Duplication des samples pour les catégories rares <= min_samples_per_category
+    if min_samples_per_category > 1:
+        df = df[df[NATURE_COL].map(df[NATURE_COL].value_counts()) >= min_samples_per_category]
     category_counts = df[NATURE_COL].value_counts()
     valid_categories = category_counts[category_counts >= min_samples_per_category].index
     
@@ -271,9 +270,7 @@ def train_pytorch_model(X_train, X_test, y_train, y_test, tfidf_configs, le_filt
     
     return test_score
 
-def save_pytorch_model(model, tfidf_configs, le_filtered, test_score, config, valid_categories, X_train, X_test):
-    """Sauvegarde le modèle PyTorch et ses composants."""
-    
+def save_pytorch_model(model, tfidf_configs, le_filtered, test_score, config, valid_categories, X_train, X_test):    
     print_progress(6, "Sauvegarde du modèle PyTorch")
     
     # Création du dossier
