@@ -14,15 +14,15 @@ import os
 from datetime import datetime
 
 from model_utils import TextClassifierNet, print_progress
-from data_processing import load_excel_data, create_tfidf_vectorizers, prepare_features, prepare_labels
+from data_processing import load_excel_data, create_tfidf_vectorizers, prepare_features, prepare_labels, augment_rare_categories
 
 # CONFIG
-FILE_PATH = "ecommerce_corrected_20250729_184443.xlsx"
+FILE_PATH = "dataset.xlsx"
 LIBELLE_COL = "Libellé produit"
 NATURE_COL = "Nature"
 
 # Configuration des données
-LIMIT_ROWS = None  # Limiter pour les tests (ex: 20000), None pour tout charger
+LIMIT_ROWS = 10000  # Limiter pour les tests (ex: 20000), None pour tout charger
 
 # Configuration du modèle
 BATCH_SIZE = 64
@@ -38,36 +38,37 @@ else:
     print("Mode CPU activé (PyTorch)")
 
 def main():
-    """Fonction principale d'entraînement."""
-    
-    # === 1. CHARGEMENT DES DONNÉES ===
     print_progress(1, "Chargement des données")
     
     df = load_excel_data(FILE_PATH, LIBELLE_COL, NATURE_COL, max_rows=LIMIT_ROWS)
     
-    # === 2. PRÉPARATION DES DONNÉES ===
     print_progress(2, "Préparation des données")
     
-    # Filtrage des catégories rares pour améliorer les performances
-    # Utilisation de min=2 pour permettre la stratification (train_test_split nécessite ≥2 échantillons/classe)
-    min_samples_per_category = 1
     category_counts = df[NATURE_COL].value_counts()
-    valid_categories = category_counts[category_counts >= min_samples_per_category].index
-    
-    # Filtration du dataset pour ne garder que les catégories avec assez d'exemples
-    df_filtered = df[df[NATURE_COL].isin(valid_categories)].copy()
-    removed_count = len(df) - len(df_filtered)
-    
-    # Reset des indices pour assurer la continuité
-    df_filtered = df_filtered.reset_index(drop=True)
-    
-    if removed_count > 0:
-        print(f"{removed_count} produits supprimés (catégories rares avec <{min_samples_per_category} exemples)")
-        print(f"Dataset d'entraînement: {len(df_filtered)} produits, {len(valid_categories)} catégories")
+    print(f"Catégories initiales: {len(category_counts)}")
+    min_samples_per_category = 100
+    print(f"Minimum d'échantillons par catégorie: {min_samples_per_category}")
 
-    print(f"Catégories avec ≥{min_samples_per_category} échantillons: {len(valid_categories)}")
-    print(f"Échantillons utilisés: {len(df_filtered)} / {len(df)}")
-    print(f"Répartition: min={category_counts[valid_categories].min()}, max={category_counts[valid_categories].max()}, moyenne={category_counts[valid_categories].mean():.1f}")
+    # Augmentation des données pour les catégories rares
+    df_augmented = augment_rare_categories(df, NATURE_COL, min_samples_per_category)
+    
+    # Vérification après augmentation
+    augmented_counts = df_augmented[NATURE_COL].value_counts()
+    valid_categories = category_counts[augmented_counts >= min_samples_per_category].index
+    print(f"Après augmentation: {len(df_augmented)} échantillons (+{len(df_augmented) - len(df)})")
+    print(f"Toutes les catégories ont maintenant ≥{min_samples_per_category} échantillons")
+    print(f"Répartition finale: min={augmented_counts.min()}, max={augmented_counts.max()}, moyenne={augmented_counts.mean():.1f}")
+    
+    # Utiliser le dataset augmenté
+    df_filtered = df_augmented.reset_index(drop=True)
+
+    # if removed_count > 0:
+    #     print(f"{removed_count} produits supprimés (catégories rares avec <{min_samples_per_category} exemples)")
+    #     print(f"Dataset d'entraînement: {len(df_filtered)} produits, {len(valid_categories)} catégories")
+
+    # print(f"Catégories avec ≥{min_samples_per_category} échantillons: {len(valid_categories)}")
+    # print(f"Échantillons utilisés: {len(df_filtered)} / {len(df)}")
+    # print(f"Répartition: min={category_counts[valid_categories].min()}, max={category_counts[valid_categories].max()}, moyenne={category_counts[valid_categories].mean():.1f}")
     
     # === 3. CRÉATION DES FEATURES ===
     print_progress(3, "Création des features TF-IDF")
@@ -271,9 +272,7 @@ def train_pytorch_model(X_train, X_test, y_train, y_test, tfidf_configs, le_filt
     
     return test_score
 
-def save_pytorch_model(model, tfidf_configs, le_filtered, test_score, config, valid_categories, X_train, X_test):
-    """Sauvegarde le modèle PyTorch et ses composants."""
-    
+def save_pytorch_model(model, tfidf_configs, le_filtered, test_score, config, valid_categories, X_train, X_test):    
     print_progress(6, "Sauvegarde du modèle PyTorch")
     
     # Création du dossier
