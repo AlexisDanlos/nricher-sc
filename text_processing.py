@@ -1,22 +1,7 @@
-"""
-Module pour le traitement de texte et l'extraction d'informations.
-Contient les fonctions de nettoyage de texte, extraction de dimensions et couleurs.
-"""
-
 import re
 from color_mapping import color_mapping, color_adjectives, adjective_normalization
 
 def clean_text(text):
-    """
-    Nettoyage amélioré qui préserve les dimensions cruciales pour la classification.
-    Version optimisée identique à l'original.
-    
-    Args:
-        text (str): Texte à nettoyer
-        
-    Returns:
-        str: Texte nettoyé et normalisé
-    """
     text = str(text).lower()
     
     # Préservation des patterns importants AVANT nettoyage
@@ -67,15 +52,6 @@ def clean_text(text):
     return text
 
 def extract_dimensions(text):
-    """
-    Extrait les dimensions d'un texte.
-    
-    Args:
-        text (str): Texte contenant potentiellement des dimensions
-        
-    Returns:
-        str or None: Dimensions extraites ou None si aucune trouvée
-    """
     text = str(text)
     
     # Patterns pour différents formats de dimensions
