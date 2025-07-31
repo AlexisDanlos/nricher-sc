@@ -16,55 +16,11 @@ from text_processing import clean_text
 try:
     import torch
     import torch.nn as nn
+    from model_utils import TextClassifierNet
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
     print("PyTorch non disponible - Chargement modèles CPU uniquement")
-
-class TextClassifierNet(nn.Module):
-    def __init__(self, input_size, hidden_size, num_classes, dropout_rate=0.4):
-        super(TextClassifierNet, self).__init__()
-        self.fc1 = nn.Linear(input_size, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, hidden_size)
-        self.fc3 = nn.Linear(hidden_size, hidden_size // 2)
-        self.fc4 = nn.Linear(hidden_size // 2, hidden_size // 4)
-        self.fc5 = nn.Linear(hidden_size // 4, num_classes)
-        
-        self.dropout = nn.Dropout(dropout_rate)
-        self.batch_norm1 = nn.BatchNorm1d(hidden_size)
-        self.batch_norm2 = nn.BatchNorm1d(hidden_size)
-        self.batch_norm3 = nn.BatchNorm1d(hidden_size // 2)
-        self.batch_norm4 = nn.BatchNorm1d(hidden_size // 4)
-        
-        self.relu = nn.ReLU()
-        self.leaky_relu = nn.LeakyReLU(0.1)
-        self.elu = nn.ELU()
-        
-    def forward(self, x):
-        x = self.fc1(x)
-        x = self.batch_norm1(x)
-        x = self.relu(x)
-        x = self.dropout(x)
-        
-        residual = x
-        x = self.fc2(x)
-        x = self.batch_norm2(x)
-        x = self.leaky_relu(x)
-        x = self.dropout(x)
-        x = x + residual
-        
-        x = self.fc3(x)
-        x = self.batch_norm3(x)
-        x = self.elu(x)
-        x = self.dropout(x)
-        
-        x = self.fc4(x)
-        x = self.batch_norm4(x)
-        x = self.relu(x)
-        x = self.dropout(x)
-        
-        x = self.fc5(x)
-        return x
 
 class ModelLoader:
     def __init__(self, model_dir="models"):

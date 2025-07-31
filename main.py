@@ -22,7 +22,7 @@ LIBELLE_COL = "Libellé produit"
 NATURE_COL = "Nature"
 
 # Configuration des données
-LIMIT_ROWS = None  # Limiter pour les tests (ex: 20000), None pour tout charger
+LIMIT_ROWS = 10000  # Limiter pour les tests (ex: 20000), None pour tout charger
 
 # Configuration du modèle
 BATCH_SIZE = 64

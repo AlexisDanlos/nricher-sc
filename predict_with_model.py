@@ -7,11 +7,11 @@ import pandas as pd
 import os
 import re
 from datetime import datetime
-from load_model import ModelLoader, clean_text
 import numpy as np
+from load_model import ModelLoader
+from text_processing import clean_text, extract_colors
 from extract_dimensions import extract_dimensions
 from color_mapping import color_mapping
-from text_processing import extract_colors
 
 def predict_nature_original_file():
     """
