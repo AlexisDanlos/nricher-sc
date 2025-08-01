@@ -101,11 +101,14 @@ def predict_nature_original_file():
         # Extraire les couleurs et dimensions du libellé produit
         print(f"\nExtraction des couleurs et dimensions...")
         df_clean['couleurs_extraites'] = df_clean['Libellé produit'].apply(extract_colors)
-        df_clean['dimensions_extraites'] = df_clean['Libellé produit'].apply(extract_dimensions)
+        # extract_dimensions now returns (raw, cm)
+        df_clean[['dimensions_raw', 'dimensions_cm']] = df_clean['Libellé produit'] \
+            .apply(lambda x: pd.Series(extract_dimensions(str(x))))
         
         # Statistiques d'extraction
         colors_found = df_clean['couleurs_extraites'].str.len() > 0
-        dimensions_found = df_clean['dimensions_extraites'].notna()
+        # consider successful extraction when cm part is not None
+        dimensions_found = df_clean['dimensions_cm'].notna()
 
         print(f"   Couleurs trouvées: {colors_found.sum()}/{len(df_clean)} produits ({(colors_found.sum()/len(df_clean)*100):.1f}%)")
         print(f"   Dimensions trouvées: {dimensions_found.sum()}/{len(df_clean)} produits ({(dimensions_found.sum()/len(df_clean)*100):.1f}%)")

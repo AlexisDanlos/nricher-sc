@@ -53,7 +53,7 @@ def augment_rare_categories(df, nature_col, min_samples_per_category):
     Augmente les données en dupliquant les échantillons des catégories rares
     jusqu'à atteindre min_samples_per_category échantillons par catégorie.
     """
-    print(f"Augmentation des catégories avec <{min_samples_per_category} échantillons...")
+    # print(f"Augmentation des catégories avec <{min_samples_per_category} échantillons...")
     
     category_counts = df[nature_col].value_counts()
     rare_categories = category_counts[category_counts < min_samples_per_category].index
@@ -62,7 +62,7 @@ def augment_rare_categories(df, nature_col, min_samples_per_category):
         print("Aucune catégorie rare détectée, pas d'augmentation nécessaire")
         return df.copy()
     
-    print(f"Catégories à augmenter: {len(rare_categories)}")
+    # print(f"Catégories à augmenter: {len(rare_categories)}")
     
     # Liste pour stocker tous les DataFrames
     augmented_dfs = [df.copy()]
@@ -82,8 +82,8 @@ def augment_rare_categories(df, nature_col, min_samples_per_category):
         full_duplications = needed_samples // current_count
         remaining_samples = needed_samples % current_count
         
-        print(f"   {category}: {current_count} → {min_samples_per_category} "
-              f"(+{needed_samples} échantillons)")
+        # print(f"   {category}: {current_count} → {min_samples_per_category} "
+        #       f"(+{needed_samples} échantillons)")
         
         # Dupliquer complètement les données autant de fois que nécessaire
         for _ in range(full_duplications):
@@ -101,27 +101,9 @@ def augment_rare_categories(df, nature_col, min_samples_per_category):
     # Mélanger les données pour éviter que les duplicatas soient groupés
     df_augmented = df_augmented.sample(frac=1, random_state=42).reset_index(drop=True)
     
-    print(f"✅ Augmentation terminée: {len(df)} → {len(df_augmented)} échantillons")
+    print(f"Augmentation terminée: {len(df)} → {len(df_augmented)} échantillons")
     
     return df_augmented
-
-def prepare_data_for_training(df, libelle_col="LIBELLE", nature_col="NATURE", min_samples=30):
-    print("Analyse des catégories...")
-    
-    # Calcul du nombre d'échantillons par catégorie
-    category_counts = df[nature_col].value_counts()
-    
-    # Filtrage des catégories avec suffisamment d'échantillons
-    valid_categories = category_counts[category_counts >= min_samples].index
-    df_filtered = df[df[nature_col].isin(valid_categories)].copy()
-    
-    print(f"Catégories avec ≥{min_samples} échantillons: {len(valid_categories)}")
-    print(f"Échantillons utilisés: {len(df_filtered)} / {len(df)}")
-    print(f"Répartition: min={category_counts[valid_categories].min()}, "
-          f"max={category_counts[valid_categories].max()}, "
-          f"moyenne={category_counts[valid_categories].mean():.1f}")
-    
-    return df_filtered, valid_categories, category_counts
 
 def create_tfidf_vectorizers():
     from numpy import float32
@@ -129,7 +111,7 @@ def create_tfidf_vectorizers():
     tfidf_configs = [
         # Configuration 1: Features générales (réduit pour éviter OOM)
         TfidfVectorizer(
-            max_features=4000,  # Réduit pour éviter OOM
+            max_features=5000,  # Réduit pour éviter OOM
             ngram_range=(1, 2),  # Réduit les n-grams
             min_df=3,
             max_df=0.9,
@@ -145,7 +127,7 @@ def create_tfidf_vectorizers():
         ),
         # Configuration 2: Focus sur les caractères (réduit pour éviter OOM)
         TfidfVectorizer(
-            max_features=2000,  # Réduit pour éviter OOM
+            max_features=2500,  # Réduit pour éviter OOM
             ngram_range=(2, 3),  # Réduit les n-grams
             min_df=5,
             max_df=0.85,

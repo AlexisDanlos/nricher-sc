@@ -22,7 +22,7 @@ LIBELLE_COL = "Libellé produit"
 NATURE_COL = "Nature"
 
 # Configuration des données
-LIMIT_ROWS = 10000  # Limiter pour les tests (ex: 20000), None pour tout charger
+LIMIT_ROWS = None  # Limiter pour les tests (ex: 20000), None pour tout charger
 
 # Configuration du modèle
 BATCH_SIZE = 64
@@ -106,6 +106,11 @@ def main():
 
 def train_pytorch_model(X_train, X_test, y_train, y_test, tfidf_configs, le_filtered, valid_categories):
     """Entraîne le modèle PyTorch - Compatible CPU/GPU."""
+    # Convertir matrices creuses en tableaux denses si nécessaire
+    if hasattr(X_train, 'toarray'):
+        X_train = X_train.toarray()
+    if hasattr(X_test, 'toarray'):
+        X_test = X_test.toarray()
     
     # Configuration du modèle adaptatif selon le device
     input_size = X_train.shape[1]
