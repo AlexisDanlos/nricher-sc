@@ -1,14 +1,6 @@
-"""
-Script pour charger et utiliser les modèles sauvegardés par main.py
-Permet de faire des prédictions sans refaire l'entraînement
-"""
-
 import os
 import pickle
 import joblib
-import pandas as pd
-import re
-from datetime import datetime
 import numpy as np
 from text_processing import clean_text
 

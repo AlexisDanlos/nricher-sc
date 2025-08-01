@@ -1,8 +1,3 @@
-"""
-Script pour utiliser le modèle le plus récent pour prédire la Nature des produits
-dans le fichier original 20210614 Ecommerce sales.xlsb
-"""
-
 import pandas as pd
 import os
 from datetime import datetime
@@ -11,11 +6,6 @@ from text_processing import extract_colors
 from extract_dimensions import extract_dimensions
 
 def predict_nature_original_file():
-    """
-    Utilise le modèle le plus récent pour prédire la Nature des produits
-    dans le fichier original et compare avec les vraies valeurs
-    """
-    
     # Fichier à analyser
     input_file = "20210614 Ecommerce sales.xlsb"
     
@@ -212,7 +202,6 @@ def predict_nature_original_file():
         traceback.print_exc()
 
 def quick_sample_test():
-    """Test rapide sur un échantillon de 1000 produits"""
     print("Test rapide sur échantillon")
     print("=" * 40)
     

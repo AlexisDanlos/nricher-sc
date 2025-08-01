@@ -1,8 +1,3 @@
-"""
-Module pour le chargement et le traitement des données.
-Contient les fonctions de lecture de fichiers Excel et de préparation des données.
-"""
-
 import pandas as pd
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -49,21 +44,13 @@ def load_excel_data(file_path: str, libelle_col="Libellé produit", nature_col="
     return df
 
 def augment_rare_categories(df, nature_col, min_samples_per_category):
-    """
-    Augmente les données en dupliquant les échantillons des catégories rares
-    jusqu'à atteindre min_samples_per_category échantillons par catégorie.
-    """
-    # print(f"Augmentation des catégories avec <{min_samples_per_category} échantillons...")
-    
     category_counts = df[nature_col].value_counts()
     rare_categories = category_counts[category_counts < min_samples_per_category].index
     
     if len(rare_categories) == 0:
         print("Aucune catégorie rare détectée, pas d'augmentation nécessaire")
         return df.copy()
-    
-    # print(f"Catégories à augmenter: {len(rare_categories)}")
-    
+        
     # Liste pour stocker tous les DataFrames
     augmented_dfs = [df.copy()]
     
@@ -81,10 +68,7 @@ def augment_rare_categories(df, nature_col, min_samples_per_category):
         # Calculer combien de fois dupliquer et combien d'échantillons supplémentaires
         full_duplications = needed_samples // current_count
         remaining_samples = needed_samples % current_count
-        
-        # print(f"   {category}: {current_count} → {min_samples_per_category} "
-        #       f"(+{needed_samples} échantillons)")
-        
+              
         # Dupliquer complètement les données autant de fois que nécessaire
         for _ in range(full_duplications):
             augmented_dfs.append(category_samples.copy())

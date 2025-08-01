@@ -1,8 +1,3 @@
-"""
-Script principal pour l'entraînement du modèle de classification e-commerce.
-Ce script se concentre uniquement sur l'entraînement et la sauvegarde du modèle.
-"""
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -105,7 +100,6 @@ def main():
     print("Entraînement terminé avec succès!")
 
 def train_pytorch_model(X_train, X_test, y_train, y_test, tfidf_configs, le_filtered, valid_categories):
-    """Entraîne le modèle PyTorch - Compatible CPU/GPU."""
     # Convertir matrices creuses en tableaux denses si nécessaire
     if hasattr(X_train, 'toarray'):
         X_train = X_train.toarray()
