@@ -5,13 +5,10 @@ dans le fichier original 20210614 Ecommerce sales.xlsb
 
 import pandas as pd
 import os
-import re
 from datetime import datetime
-import numpy as np
 from load_model import ModelLoader
-from text_processing import clean_text, extract_colors
+from text_processing import extract_colors
 from extract_dimensions import extract_dimensions
-from color_mapping import color_mapping
 
 def predict_nature_original_file():
     """
@@ -101,7 +98,6 @@ def predict_nature_original_file():
         # Extraire les couleurs et dimensions du libellé produit
         print(f"\nExtraction des couleurs et dimensions...")
         df_clean['couleurs_extraites'] = df_clean['Libellé produit'].apply(extract_colors)
-        # extract_dimensions now returns (raw, cm)
         df_clean[['dimensions_raw', 'dimensions_cm']] = df_clean['Libellé produit'] \
             .apply(lambda x: pd.Series(extract_dimensions(str(x))))
         
