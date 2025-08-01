@@ -51,44 +51,6 @@ def clean_text(text):
     
     return text
 
-def extract_dimensions(text):
-    text = str(text)
-    
-    # Patterns pour différents formats de dimensions
-    patterns = [
-        # Format 3D avec cm: "108 x 32 5 x 48 cm" -> "108 x 32.5 x 48"
-        r'(\d+(?:[,\.]\d+)?)\s*[xX×*]\s*(\d+)\s+(\d+)\s*[xX×*]\s*(\d+)\s*cm',
-        # Format 3D standard: "143 x 36 x 178 cm" ou "143 x 36 x 178"
-        r'(\d+(?:[,\.]\d+)?)\s*[xX×*]\s*(\d+(?:[,\.]\d+)?)\s*[xX×*]\s*(\d+(?:[,\.]\d+)?)',
-        # Format 2D: "45 x 75"
-        r'(\d+(?:[,\.]\d+)?)\s*[xX×*]\s*(\d+(?:[,\.]\d+)?)'
-    ]
-    
-    for pattern in patterns:
-        matches = re.findall(pattern, text, re.IGNORECASE)
-        if matches:
-            dimensions = []
-            for match in matches:
-                if len(match) == 4:  # Format spécial "108 x 32 5 x 48"
-                    # Combine le 2e et 3e groupe: "32" + "5" = "32.5"
-                    dim1 = match[0].replace(',', '.')
-                    dim2 = match[1] + '.' + match[2]  # "32" + "." + "5" = "32.5"
-                    dim3 = match[3].replace(',', '.')
-                    dimensions.append(f"{dim1}*{dim2}*{dim3}")
-                elif len(match) == 3:  # Format 3D standard
-                    dim_parts = [part.replace(',', '.') for part in match if part]
-                    if len(dim_parts) == 3:
-                        dimensions.append("*".join(dim_parts))
-                elif len(match) == 2:  # Format 2D
-                    dim_parts = [part.replace(',', '.') for part in match if part]
-                    if len(dim_parts) == 2:
-                        dimensions.append("*".join(dim_parts))
-            
-            if dimensions:
-                return " | ".join(dimensions)
-    
-    return None
-
 def extract_colors(text):
     text = str(text).lower()  # Convert to string first, then to lowercase
     
