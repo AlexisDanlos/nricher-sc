@@ -4,6 +4,7 @@ import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
 from sklearn.model_selection import train_test_split
 import numpy as np
+import pandas as pd
 import pickle
 import os
 from datetime import datetime
@@ -39,23 +40,68 @@ def main():
     
     print_progress(2, "Préparation des données")
     
-    category_counts = df[NATURE_COL].value_counts()
-    print(f"Catégories initiales: {len(category_counts)}")
-    min_samples_per_category = 100
-    print(f"Minimum d'échantillons par catégorie: {min_samples_per_category}")
+    # CONSERVATIVE STRATEGY: Clean duplicates but preserve ALL categories
+    print("Nettoyage des doublons exacts (préservation de toutes les catégories)...")
+    original_size = len(df)
+    df_clean = df.drop_duplicates(subset=[LIBELLE_COL, NATURE_COL])
+    duplicates_removed = original_size - len(df_clean)
+    print(f"   Supprimé {duplicates_removed:,} doublons exacts ({duplicates_removed/original_size*100:.1f}%)")
+    print(f"   Taille dataset: {original_size:,} → {len(df_clean):,}")
+    
+    # Handle label conflicts more carefully to preserve categories
+    print("Résolution intelligente des conflits de labels...")
+    
+    # Identify conflicts
+    label_groups = df_clean.groupby(LIBELLE_COL)[NATURE_COL].apply(list).reset_index()
+    conflicts = label_groups[label_groups[NATURE_COL].apply(lambda x: len(set(x)) > 1)]
+    
+    if len(conflicts) > 0:
+        print(f"   Trouvé {len(conflicts)} conflits de labels")
+        
+        # For each conflict, keep one sample per category instead of just the first
+        conflict_labels = set(conflicts[LIBELLE_COL])
+        df_conflicts = df_clean[df_clean[LIBELLE_COL].isin(conflict_labels)]
+        df_no_conflicts = df_clean[~df_clean[LIBELLE_COL].isin(conflict_labels)]
+        
+        # Keep one sample per (label, category) combination for conflicts
+        df_conflicts_resolved = df_conflicts.drop_duplicates(subset=[LIBELLE_COL, NATURE_COL], keep='first')
+        
+        # Combine back
+        df_clean = pd.concat([df_no_conflicts, df_conflicts_resolved], ignore_index=True)
+        
+        print(f"   Résolution préservant toutes les catégories: {len(df_conflicts)} → {len(df_conflicts_resolved)} échantillons de conflits")
+    
+    print(f"   Dataset après résolution: {len(df_clean):,}")
+    
+    category_counts = df_clean[NATURE_COL].value_counts()
+    print(f"Catégories préservées: {len(category_counts)}")
+    min_samples_per_category = 10  # Lower target to accommodate small categories
+    print(f"Minimum d'échantillons par catégorie pour augmentation: {min_samples_per_category}")
 
-    # Augmentation des données pour les catégories rares
-    df_augmented = augment_rare_categories(df, NATURE_COL, min_samples_per_category)
+    # More conservative augmentation - only for very small categories
+    rare_categories = category_counts[(category_counts >= 1) & (category_counts < min_samples_per_category)]
+    if len(rare_categories) > 0:
+        print(f"Augmentation conservative pour {len(rare_categories)} catégories rares...")
+        df_augmented = augment_rare_categories(df_clean, NATURE_COL, min_samples_per_category)
+    else:
+        print("Pas d'augmentation nécessaire")
+        df_augmented = df_clean
     
     # Vérification après augmentation
     augmented_counts = df_augmented[NATURE_COL].value_counts()
-    valid_categories = category_counts[augmented_counts >= min_samples_per_category].index
-    print(f"Après augmentation: {len(df_augmented)} échantillons (+{len(df_augmented) - len(df)})")
-    print(f"Toutes les catégories ont maintenant ≥{min_samples_per_category} échantillons")
+    print(f"Après augmentation: {len(df_augmented)} échantillons (+{len(df_augmented) - len(df_clean)})")
+    print(f"Catégories finales: {len(augmented_counts)} (toutes préservées)")
     print(f"Répartition finale: min={augmented_counts.min()}, max={augmented_counts.max()}, moyenne={augmented_counts.mean():.1f}")
     
-    # Utiliser le dataset augmenté
+    # Show category distribution
+    small_cats = (augmented_counts < 10).sum()
+    medium_cats = ((augmented_counts >= 10) & (augmented_counts < 50)).sum()
+    large_cats = (augmented_counts >= 50).sum()
+    print(f"Distribution: {small_cats} petites (<10), {medium_cats} moyennes (10-49), {large_cats} grandes (≥50)")
+    
+    # Use all categories for training (no filtering)
     df_filtered = df_augmented.reset_index(drop=True)
+    valid_categories = augmented_counts.index  # All categories are valid
 
     # if removed_count > 0:
     #     print(f"{removed_count} produits supprimés (catégories rares avec <{min_samples_per_category} exemples)")
@@ -205,7 +251,7 @@ def train_pytorch_model(X_train, X_test, y_train, y_test, tfidf_configs, le_filt
         scheduler.step()
         
         # Validation et affichage du progrès plus fréquent
-        if epoch % 5 == 0 or epoch >= 65:  # Validation tous les 5 époques
+        if epoch % 5 == 0 or epoch >= 70:  # Validation tous les 5 époques
             model.eval()
             with torch.no_grad():
                 test_output = model(X_test_tensor)
@@ -227,7 +273,7 @@ def train_pytorch_model(X_train, X_test, y_train, y_test, tfidf_configs, le_filt
                 avg_loss = total_loss / batch_count
                 print(f"   Époque {epoch+1:3d}: Loss={avg_loss:.4f}, Acc={accuracy:.3f}, Best={best_accuracy:.3f}, LR={current_lr:.6f}, Patience={patience_counter}")
                 
-                if patience_counter >= 3 and epoch >= 45:  # Early stopping plus patient
+                if patience_counter >= 4 and epoch >= 50:  # Early stopping plus patient
                     print(f"   Early stopping à l'époque {epoch+1} (patience épuisée)")
                     break
                     
